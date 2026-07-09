@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<meta name="description" content="Wlybot - asisten AI cepat dan pintar">
+<title>Wlybot</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236c7bff'/%3E%3Cpath d='M9 11c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3h-0a2 2 0 0 1-2-2v-7z' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #171a23;
+    --surface-2: #1e2230;
+    --border: #2a2f40;
+    --text: #e8eaf2;
+    --text-dim: #9aa0b4;
+    --accent: #6c7bff;
+    --accent-press: #5563e8;
+    --user-bubble: #2d3550;
+    --danger: #ff6b6b;
+    --radius: 18px;
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: calc(10px + var(--sat)) 14px 10px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: var(--accent);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .logo svg { width: 20px; height: 20px; }
+  .title-wrap { flex: 1; min-width: 0; }
+  .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+  .subtitle { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    width: 40px; height: 40px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s;
+  }
+  .icon-btn:active { background: var(--surface-2); }
+  .icon-btn svg { width: 21px; height: 21px; }
+
+  /* Chat area */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scroll-behavior: smooth;
+  }
+  .empty-state {
+    margin: auto;
+    text-align: center;
+    padding: 24px;
+    color: var(--text-dim);
+  }
+  .empty-state .logo { width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 16px; }
+  .empty-state .logo svg { width: 32px; height: 32px; }
+  .empty-state h2 { color: var(--text); font-size: 20px; margin-bottom: 6px; }
+  .empty-state p { font-size: 14px; line-height: 1.5; max-width: 340px; margin: 0 auto 20px; }
+  .suggestions { display: flex; flex-direction: column; gap: 8px; max-width: 340px; margin: 0 auto; }
+  .suggestion {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .suggestion:active { background: var(--surface-2); }
+
+  .msg {
+    max-width: 88%;
+    padding: 11px 15px;
+    border-radius: var(--radius);
+    font-size: 15px;
+    line-height: 1.55;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    animation: pop .18s ease-out;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--user-bubble);
+    border-bottom-right-radius: 6px;
+    white-space: pre-wrap;
+  }
+  .msg.bot {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 6px;
+  }
+  .msg.error {
+    align-self: center;
+    background: color-mix(in srgb, var(--danger) 12%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    color: var(--danger);
+    font-size: 13px;
+    max-width: 95%;
+  }
+
+  /* Markdown di dalam bubble bot */
+  .msg.bot p { margin: 0 0 10px; }
+  .msg.bot p:last-child { margin-bottom: 0; }
+  .msg.bot ul, .msg.bot ol { margin: 0 0 10px 20px; }
+  .msg.bot li { margin-bottom: 4px; }
+  .msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 15.5px; margin: 12px 0 6px; }
+  .msg.bot code {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  .msg.bot pre {
+    background: #0c0e14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 0 0 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .msg.bot pre code { background: none; border: none; padding: 0; font-size: 13px; line-height: 1.5; }
+  .msg.bot a { color: var(--accent); }
+  .msg.bot blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 12px;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+  }
+
+  /* Typing indicator */
+  .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
+  .typing span {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    animation: blink 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+  /* Composer */
+  #composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px calc(10px + var(--sab));
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  #input-wrap {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 6px 6px 6px 16px;
+    transition: border-color .15s;
+  }
+  #input-wrap:focus-within { border-color: var(--accent); }
+  #input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 16px; /* mencegah auto-zoom iOS */
+    font-family: inherit;
+    line-height: 1.45;
+    resize: none;
+    outline: none;
+    max-height: 120px;
+    padding: 6px 0;
+  }
+  #input::placeholder { color: var(--text-dim); }
+  #send {
+    width: 38px; height: 38px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s, opacity .15s;
+  }
+  #send:active { background: var(--accent-press); }
+  #send:disabled { opacity: .4; cursor: default; }
+  #send svg { width: 18px; height: 18px; }
+
+  /* Bottom sheet pengaturan */
+  #sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  #sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 8px 18px calc(24px + var(--sab));
+    z-index: 21;
+    transform: translateY(105%);
+    transition: transform .25s cubic-bezier(.3,.9,.3,1);
+  }
+  body.sheet-open #sheet { transform: none; }
+  body.sheet-open #sheet-backdrop { opacity: 1; pointer-events: auto; }
+  .sheet-handle {
+    width: 40px; height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 6px auto 16px;
+  }
+  #sheet h3 { font-size: 16px; margin-bottom: 4px; }
+  #sheet .hint { font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px; line-height: 1.5; }
+  .provider-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+    margin-bottom: 8px;
+    text-align: left;
+  }
+  .provider-option .radio {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--text-dim);
+    flex-shrink: 0;
+  }
+  .provider-option.selected { border-color: var(--accent); }
+  .provider-option.selected .radio { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 45%, transparent 50%); }
+  .provider-option small { display: block; color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .sheet-danger {
+    width: 100%;
+    margin-top: 8px;
+    padding: 13px;
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    border-radius: 14px;
+    background: transparent;
+    color: var(--danger);
+    font-size: 15px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>
+      </svg>
+    </div>
+    <div class="title-wrap">
+      <div class="title">Wlybot</div>
+      <div class="subtitle" id="status">Siap membantu</div>
+    </div>
+    <button class="icon-btn" id="settings-btn" aria-label="Pengaturan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </header>
+
+  <main id="chat" aria-live="polite"></main>
+
+  <div id="composer">
+    <div id="input-wrap">
+      <textarea id="input" rows="1" placeholder="Tulis pesan" autocomplete="off"></textarea>
+    </div>
+    <button id="send" aria-label="Kirim" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div id="sheet-backdrop"></div>
+<div id="sheet" role="dialog" aria-label="Pengaturan">
+  <div class="sheet-handle"></div>
+  <h3>Model AI</h3>
+  <p class="hint">API key dikonfigurasi di server (environment variable Vercel), bukan di perangkat ini. Provider tanpa key akan gagal dipakai.</p>
+  <div id="provider-list"></div>
+  <button class="sheet-danger" id="clear-btn">Hapus riwayat percakapan</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var chatEl = document.getElementById('chat');
+  var inputEl = document.getElementById('input');
+  var sendBtn = document.getElementById('send');
+  var statusEl = document.getElementById('status');
+  var sheetEl = document.getElementById('sheet');
+  var backdropEl = document.getElementById('sheet-backdrop');
+
+  var STORAGE_MSGS = 'wlybot.messages';
+  var STORAGE_PROVIDER = 'wlybot.provider';
+
+  var PROVIDER_LABELS = [
+    { id: 'auto', name: 'Otomatis', desc: 'Pakai provider pertama yang tersedia' },
+    { id: 'groq', name: 'Groq', desc: 'Llama via Groq, sangat cepat' },
+    { id: 'gemini', name: 'Gemini', desc: 'Google Gemini Flash' },
+    { id: 'openrouter', name: 'OpenRouter', desc: 'Berbagai model open source' }
+  ];
+
+  var messages = [];
+  var busy = false;
+  var abortCtrl = null;
+
+  try {
+    messages = JSON.parse(localStorage.getItem(STORAGE_MSGS) || '[]');
+    if (!Array.isArray(messages)) messages = [];
+  } catch (e) { messages = []; }
+
+  function getProvider() {
+    return localStorage.getItem(STORAGE_PROVIDER) || 'auto';
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_MSGS, JSON.stringify(messages.slice(-60))); } catch (e) {}
+  }
+
+  function scrollToBottom() {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  /* ---------- Markdown ringan ---------- */
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderInline(s) {
+    return s
+      .replace(/`([^`]+)`/g, function (_, c) { return '<code>' + c + '</code>'; })
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  function renderMarkdown(raw) {
+    var text = escapeHtml(raw);
+    var parts = text.split(/```/);
+    var html = '';
+    for (var i = 0; i < parts.length; i++) {
+      if (i % 2 === 1) {
+        var code = parts[i].replace(/^[a-zA-Z0-9+_-]*\n/, '');
+        html += '<pre><code>' + code + '</code></pre>';
+      } else {
+        html += renderBlocks(parts[i]);
+      }
+    }
+    return html;
+  }
+
+  function renderBlocks(text) {
+    var lines = text.split('\n');
+    var html = '';
+    var listType = null; // 'ul' | 'ol'
+    var para = [];
+
+    function flushPara() {
+      if (para.length) {
+        html += '<p>' + renderInline(para.join('<br>')) + '</p>';
+        para = [];
+      }
+    }
+    function closeList() {
+      if (listType) { html += '</' + listType + '>'; listType = null; }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var h = line.match(/^(#{1,3})\s+(.*)/);
+      var ul = line.match(/^\s*[-*]\s+(.*)/);
+      var ol = line.match(/^\s*\d+[.)]\s+(.*)/);
+      var bq = line.match(/^>\s?(.*)/);
+
+      if (h) {
+        flushPara(); closeList();
+        var lvl = h[1].length;
+        html += '<h' + lvl + '>' + renderInline(h[2]) + '</h' + lvl + '>';
+      } else if (ul || ol) {
+        flushPara();
+        var want = ul ? 'ul' : 'ol';
+        if (listType !== want) { closeList(); html += '<' + want + '>'; listType = want; }
+        html += '<li>' + renderInline((ul || ol)[1]) + '</li>';
+      } else if (bq) {
+        flushPara(); closeList();
+        html += '<blockquote>' + renderInline(bq[1]) + '</blockquote>';
+      } else if (line.trim() === '') {
+        flushPara(); closeList();
+      } else {
+        closeList();
+        para.push(line);
+      }
+    }
+    flushPara(); closeList();
+    return html;
+  }
+
+  /* ---------- Render pesan ---------- */
+  function addBubble(role, content) {
+    var el = document.createElement('div');
+    el.className = 'msg ' + role;
+    if (role === 'bot') el.innerHTML = renderMarkdown(content);
+    else el.textContent = content;
+    chatEl.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  function showEmptyState() {
+    chatEl.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg></div>' +
+        '<h2>Halo, saya Wlybot</h2>' +
+        '<p>Asisten AI yang cepat dan to the point. Tanyakan apa saja.</p>' +
+        '<div class="suggestions">' +
+          '<button class="suggestion">Jelaskan cara kerja API secara sederhana</button>' +
+          '<button class="suggestion">Buatkan caption Instagram untuk produk kopi</button>' +
+          '<button class="suggestion">Tulis fungsi JavaScript untuk validasi email</button>' +
+        '</div>' +
+      '</div>';
+    var btns = chatEl.querySelectorAll('.suggestion');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        inputEl.value = this.textContent;
+        onInput();
+        sendMessage();
+      });
+    }
+  }
+
+  function renderAll() {
+    chatEl.innerHTML = '';
+    if (messages.length === 0) { showEmptyState(); return; }
+    for (var i = 0; i < messages.length; i++) {
+      addBubble(messages[i].role === 'user' ? 'user' : 'bot', messages[i].content);
+    }
+  }
+
+  /* ---------- Kirim & streaming ---------- */
+  function setBusy(v) {
+    busy = v;
+    statusEl.textContent = v ? 'Sedang mengetik' : 'Siap membantu';
+    updateSendState();
+  }
+
+  function updateSendState() {
+    sendBtn.disabled = busy || inputEl.value.trim() === '';
+  }
+
+  function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text || busy) return;
+
+    if (messages.length === 0) chatEl.innerHTML = '';
+    messages.push({ role: 'user', content: text });
+    save();
+    addBubble('user', text);
+
+    inputEl.value = '';
+    onInput();
+    setBusy(true);
+
+    var botEl = document.createElement('div');
+    botEl.className = 'msg bot';
+    botEl.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    chatEl.appendChild(botEl);
+    scrollToBottom();
+
+    abortCtrl = new AbortController();
+    var acc = '';
+
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortCtrl.signal,
+      body: JSON.stringify({ messages: messages, provider: getProvider() })
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (data) {
+          throw new Error(data.error || 'Terjadi kesalahan (' + res.status + ')');
+        }, function () {
+          throw new Error('Terjadi kesalahan (' + res.status + ')');
+        });
+      }
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) return;
+          acc += decoder.decode(r.value, { stream: true });
+          botEl.innerHTML = renderMarkdown(acc);
+          scrollToBottom();
+          return pump();
+        });
+      }
+      return pump();
+    }).then(function () {
+      finish();
+    }).catch(function (err) {
+      if (err.name === 'AbortError') { finish(); return; }
+      botEl.remove();
+      var e = addBubble('error', err.message);
+      e.classList.add('error');
+      setBusy(false);
+    });
+
+    function finish() {
+      if (acc.trim() === '') {
+        botEl.remove();
+        addBubble('error', 'Tidak ada respons dari model. Coba lagi atau ganti provider di pengaturan.');
+      } else {
+        messages.push({ role: 'assistant', content: acc });
+        save();
+        botEl.innerHTML = renderMarkdown(acc);
+      }
+      setBusy(false);
+      scrollToBottom();
+    }
+  }
+
+  /* ---------- Input ---------- */
+  function onInput() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    updateSendState();
+  }
+  inputEl.addEventListener('input', onInput);
+  inputEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && window.matchMedia('(min-width: 700px)').matches) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+
+  /* ---------- Bottom sheet ---------- */
+  function renderProviders() {
+    var list = document.getElementById('provider-list');
+    var current = getProvider();
+    list.innerHTML = '';
+    PROVIDER_LABELS.forEach(function (p) {
+      var btn = document.createElement('button');
+      btn.className = 'provider-option' + (p.id === current ? ' selected' : '');
+      btn.innerHTML = '<span class="radio"></span><span>' + p.name + '<small>' + p.desc + '</small></span>';
+      btn.addEventListener('click', function () {
+        localStorage.setItem(STORAGE_PROVIDER, p.id);
+        renderProviders();
+        closeSheet();
+      });
+      list.appendChild(btn);
+    });
+  }
+  function openSheet() { renderProviders(); document.body.classList.add('sheet-open'); }
+  function closeSheet() { document.body.classList.remove('sheet-open'); }
+  document.getElementById('settings-btn').addEventListener('click', openSheet);
+  backdropEl.addEventListener('click', closeSheet);
+
+  document.getElementById('clear-btn').addEventListener('click', function () {
+    if (!confirm('Hapus semua riwayat percakapan?')) return;
+    messages = [];
+    save();
+    closeSheet();
+    renderAll();
+  });
+
+  /* ---------- Init ---------- */
+  renderAll();
+  scrollToBottom();
+})();
+</script>
+</body>
+</html>
