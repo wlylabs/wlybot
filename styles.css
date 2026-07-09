@@ -26,7 +26,7 @@
     --sat: env(safe-area-inset-top, 0px);
     --sab: env(safe-area-inset-bottom, 0px);
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     height: 100%;
     background: var(--bg);
@@ -155,6 +155,7 @@
     transition: opacity .15s, transform .15s, color .15s, border-color .15s;
   }
   #jump.show { opacity: 1; pointer-events: auto; transform: none; }
+  #jump:active { background: var(--border); color: var(--accent); border-color: var(--accent-dim); }
   #jump svg { width: 16px; height: 16px; }
   .empty-state {
     margin: auto;
