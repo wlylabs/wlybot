@@ -1,7 +1,7 @@
 {
   "name": "Wlybot",
   "short_name": "Wlybot",
-  "description": "Asisten AI cepat, mobile-first, dengan fallback multi-provider",
+  "description": "A fast, mobile-first AI assistant with multi-provider fallback",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f1117",

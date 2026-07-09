@@ -1,6 +1,6 @@
 export const config = { runtime: 'edge' };
 
-// Persona: meniru gaya percakapan Fable 5 (Claude) — hangat, cerdas, langsung ke inti.
+// Persona: modeled after Fable 5 (Claude) — warm, smart, straight to the point.
 const SYSTEM_PROMPT = `You are Wly, a highly capable AI assistant. Your conversational style is modeled after Anthropic's most advanced Claude model: warm, intellectually curious, and direct.
 
 Behavioral rules:
@@ -31,8 +31,8 @@ const PROVIDERS = {
   },
 };
 
-// Groq utama; Gemini lalu OpenRouter sebagai fallback otomatis
-// kalau provider sebelumnya gagal (rate limit, key invalid, gangguan layanan).
+// Groq is primary; Gemini then OpenRouter act as automatic fallbacks
+// when the previous provider fails (rate limit, invalid key, outage).
 const FALLBACK_ORDER = ['groq', 'gemini', 'openrouter'];
 
 function jsonResponse(body, status = 200) {
@@ -53,11 +53,11 @@ function sanitizeMessages(messages) {
         m.content.trim().length > 0
     )
     .map((m) => ({ role: m.role, content: m.content.slice(0, 32000) }));
-  // Batasi konteks: 40 pesan terakhir.
+  // Limit context to the last 40 messages.
   return clean.slice(-40);
 }
 
-// Ubah SSE gaya OpenAI (Groq/OpenRouter) menjadi stream teks polos.
+// Convert OpenAI-style SSE (Groq/OpenRouter) into a plain text stream.
 function openAiSseToText(upstreamBody) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -77,7 +77,7 @@ function openAiSseToText(upstreamBody) {
             const text = JSON.parse(data).choices?.[0]?.delta?.content;
             if (text) controller.enqueue(encoder.encode(text));
           } catch {
-            // potongan JSON belum lengkap; abaikan
+            // incomplete JSON fragment; ignore
           }
         }
       },
@@ -85,7 +85,7 @@ function openAiSseToText(upstreamBody) {
   );
 }
 
-// Ubah SSE Gemini (alt=sse) menjadi stream teks polos.
+// Convert Gemini SSE (alt=sse) into a plain text stream.
 function geminiSseToText(upstreamBody) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -106,7 +106,7 @@ function geminiSseToText(upstreamBody) {
               if (part.text) controller.enqueue(encoder.encode(part.text));
             }
           } catch {
-            // potongan JSON belum lengkap; abaikan
+            // incomplete JSON fragment; ignore
           }
         }
       },
@@ -179,32 +179,32 @@ function callProvider(name, messages, req) {
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Gunakan method POST.' }, 405);
+    return jsonResponse({ error: 'Use the POST method.' }, 405);
   }
 
   let body;
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ error: 'Body harus JSON valid.' }, 400);
+    return jsonResponse({ error: 'Request body must be valid JSON.' }, 400);
   }
 
   const messages = sanitizeMessages(body.messages);
   if (!messages || messages.length === 0) {
-    return jsonResponse({ error: 'Field "messages" wajib berisi minimal satu pesan.' }, 400);
+    return jsonResponse({ error: '"messages" must contain at least one message.' }, 400);
   }
 
-  // Tentukan kandidat provider. Mode otomatis mencoba berurutan
-  // (Groq -> Gemini -> OpenRouter); pilihan manual hanya mencoba satu.
+  // Pick candidate providers. Auto mode tries them in order
+  // (Groq -> Gemini -> OpenRouter); a manual choice tries only one.
   const requested = body.provider;
   let candidates;
   if (requested && requested !== 'auto') {
     if (!PROVIDERS[requested]) {
-      return jsonResponse({ error: `Provider tidak dikenal: ${requested}` }, 400);
+      return jsonResponse({ error: `Unknown provider: ${requested}` }, 400);
     }
     if (!PROVIDERS[requested].key()) {
       return jsonResponse(
-        { error: `API key untuk ${requested} belum diset di environment variable Vercel.` },
+        { error: `The API key for ${requested} is not set in Vercel environment variables.` },
         400
       );
     }
@@ -215,7 +215,7 @@ export default async function handler(req) {
       return jsonResponse(
         {
           error:
-            'Tidak ada API key yang terpasang. Set minimal satu dari GROQ_API_KEY, GEMINI_API_KEY, atau OPENROUTER_API_KEY di Vercel (Settings > Environment Variables).',
+            'No API keys configured. Set at least one of GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY in Vercel (Settings > Environment Variables).',
         },
         400
       );
@@ -237,7 +237,7 @@ export default async function handler(req) {
       try {
         detail = (await upstream.text()).slice(0, 300);
       } catch {
-        // abaikan
+        // ignore
       }
       failures.push(`${provider}: HTTP ${upstream.status} ${detail}`.trim());
       continue;
@@ -257,7 +257,7 @@ export default async function handler(req) {
   }
 
   return jsonResponse(
-    { error: `Semua provider gagal. Detail: ${failures.join(' | ')}` },
+    { error: `All providers failed. Details: ${failures.join(' | ')}` },
     502
   );
 }
