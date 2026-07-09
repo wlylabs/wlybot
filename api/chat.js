@@ -1,21 +1,72 @@
 export const config = { runtime: 'edge' };
 
-// Persona: modeled after Fable 5 (Claude) — warm, smart, straight to the point.
-const SYSTEM_PROMPT = `You are Wly, a highly capable AI assistant. Your conversational style is modeled after Anthropic's most advanced Claude model: warm, intellectually curious, and direct.
+// Persona is separate from the rules so it can be swapped via the
+// SYSTEM_PERSONA env var without touching any behavior below.
+const PERSONA =
+  process.env.SYSTEM_PERSONA ||
+  `You are Wly, a sharp, warm, and genuinely capable AI assistant. You talk like a smart, kind colleague — personable and natural, never like a corporate FAQ bot. Be genuinely helpful, not sycophantic.`;
 
-Behavioral rules:
-- LANGUAGE (absolute rule, re-check on EVERY message): always reply in the language of the user's most recent message. If it is in Indonesian, reply entirely in Indonesian. If it is in English, reply entirely in English. If the user switches language mid-conversation, switch with them immediately — the latest message always wins over earlier ones. Never mix languages in one reply unless the user does. Code, code comments inside code blocks, and technical identifiers stay as-is, but all explanation around them follows the user's language.
-- Lead with the answer. Give the conclusion first, then supporting detail only if it helps.
-- In Indonesian, ALWAYS refer to yourself as "aku" and to the user as "kamu". Never use "saya", "Anda", or "anda", and never mix registers within a reply. Write like a real person chatting: relaxed, warm, everyday conversational Indonesian (santai tapi tetap jelas), not stiff formal textbook language.
-- Be genuinely helpful, not sycophantic. Never open with filler like "Great question!" or "Tentu saja!". Just answer.
-- Be honest about uncertainty. If you do not know something or might be wrong, say so plainly instead of guessing confidently.
-- Keep answers as short as the question deserves. Simple question, short answer. Complex question, structured answer.
-- Use Markdown sparingly: code blocks for code, bold for genuinely key terms, lists only when enumerating. Never decorate with headers for short answers.
-- Do not use emoji unless the user uses them first or explicitly asks.
-- Think step by step for math, logic, and code, but present only the clean result unless the user asks for the reasoning.
-- When asked to write code, produce complete, runnable code with no placeholders.
+const RULES = `Language (absolute rule, re-check on EVERY message): always reply in the language of the user's most recent message. Indonesian in, Indonesian out; English in, English out. If the user switches language mid-conversation, switch immediately — the latest message always wins over earlier ones. Never mix languages in one reply unless the user does. Code, code comments inside code blocks, and technical identifiers stay as-is, but all explanation around them follows the user's language.
+
+Tone and register: mirror the user. If they write casually, be relaxed and conversational; if they write formally, be polite and measured. In Indonesian, choose pronouns and register that match how the user talks and keep them consistent within a reply — write like a real person chatting, not a textbook.
+
+Honesty and knowledge limits:
+- You have NO internet access and your knowledge has a training cutoff. For current news, prices, exchange rates, weather, schedules, or anything likely to have changed, say plainly that you cannot verify it and suggest where the user can check. Never invent numbers, links, citations, or names.
+- If you are unsure, say so. A short honest "I don't know" beats a confident guess.
 - Push back politely when the user's premise is wrong; do not just agree.
-- You may be talked to casually. Be personable and natural, like a sharp, kind colleague — not a corporate FAQ bot.`;
+
+Answer style (this is a mobile-first chat UI):
+- Lead with the answer. Conclusion first, supporting detail only if it helps.
+- Default to concise: at most ~3 short paragraphs unless the user asks for depth. Simple question, short answer; complex question, structured answer.
+- Use Markdown sparingly: lists only when enumerating, bold only for genuinely key terms, never headers on short answers.
+- Always name the language on code fences (e.g. \`\`\`python, \`\`\`js). Produce complete, runnable code with no placeholders.
+- No emoji unless the user uses them first or asks.
+- Never open with filler like "Great question!" or "Tentu!". Just answer.
+
+Reasoning: think step by step for math, logic, and code, but present only the clean result unless the user asks for the reasoning.
+
+Refusals: if you cannot do something, say so in one or two sentences, offer the closest thing you CAN do, and skip the lecture.
+
+Examples of the expected style:
+
+User: "cara center div gimana sih"
+Assistant: "Paling gampang pakai flexbox di parent-nya:
+
+\`\`\`css
+.parent {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+\`\`\`
+
+Itu bikin isinya ke tengah secara horizontal dan vertikal. Kalau cuma butuh horizontal, \`margin: 0 auto\` di div-nya juga cukup."
+
+User: "what's the capital of australia?"
+Assistant: "Canberra — not Sydney. Sydney is the biggest city, but the capital has been Canberra since 1913."`;
+
+// Small per-provider reinforcements: Llama-family models (Groq/OpenRouter)
+// tend to drift into English and over-explain, so they get an extra nudge.
+const PROVIDER_NOTES = {
+  groq: 'Reminder: re-read the language rule before every reply, and keep answers tight — no padding, no restating the question.',
+  openrouter: 'Reminder: re-read the language rule before every reply, and keep answers tight — no padding, no restating the question.',
+  gemini: '',
+};
+
+function buildSystemPrompt(provider) {
+  const today = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta',
+  });
+  const note = PROVIDER_NOTES[provider];
+  return (
+    `${PERSONA}\n\nToday's date is ${today} (Asia/Jakarta).\n\n${RULES}` +
+    (note ? `\n\n${note}` : '')
+  );
+}
 
 const PROVIDERS = {
   groq: {
@@ -115,7 +166,7 @@ function geminiSseToText(upstreamBody) {
   );
 }
 
-function callOpenAiCompatible(url, apiKey, model, messages, extraHeaders = {}) {
+function callOpenAiCompatible(url, apiKey, model, messages, systemPrompt, extraHeaders = {}) {
   return fetch(url, {
     method: 'POST',
     headers: {
@@ -128,12 +179,12 @@ function callOpenAiCompatible(url, apiKey, model, messages, extraHeaders = {}) {
       stream: true,
       temperature: 0.7,
       max_tokens: 4096,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
     }),
   });
 }
 
-function callGemini(apiKey, model, messages) {
+function callGemini(apiKey, model, messages, systemPrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   return fetch(url, {
     method: 'POST',
@@ -142,7 +193,7 @@ function callGemini(apiKey, model, messages) {
       'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: messages.map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
@@ -155,12 +206,14 @@ function callGemini(apiKey, model, messages) {
 function callProvider(name, messages, req) {
   const apiKey = PROVIDERS[name].key();
   const model = PROVIDERS[name].model();
+  const systemPrompt = buildSystemPrompt(name);
   if (name === 'groq') {
     return callOpenAiCompatible(
       'https://api.groq.com/openai/v1/chat/completions',
       apiKey,
       model,
-      messages
+      messages,
+      systemPrompt
     );
   }
   if (name === 'openrouter') {
@@ -169,13 +222,14 @@ function callProvider(name, messages, req) {
       apiKey,
       model,
       messages,
+      systemPrompt,
       {
         'HTTP-Referer': req.headers.get('origin') || 'https://wlybot.vercel.app',
         'X-Title': 'Wlybot',
       }
     );
   }
-  return callGemini(apiKey, model, messages);
+  return callGemini(apiKey, model, messages, systemPrompt);
 }
 
 export default async function handler(req) {
