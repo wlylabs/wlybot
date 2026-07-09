@@ -327,6 +327,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin-right: auto; /* keeps copy/run packed right when both are present */
   }
   .msg.bot pre {
     background: none;
@@ -373,6 +374,48 @@
   }
   .code-copy:active { color: var(--accent); border-color: var(--accent-dim); }
   .code-copy.done { color: var(--accent); border-color: var(--accent-dim); }
+  .code-run {
+    background: transparent;
+    border: 1px solid var(--accent-dim);
+    border-radius: 6px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    padding: 3px 8px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color .15s, border-color .15s, opacity .15s;
+  }
+  .code-run:active { border-color: var(--accent); }
+  .code-run:disabled { opacity: .45; cursor: default; }
+
+  /* In-browser Python output (Pyodide) */
+  .code-out { border-top: 1px dashed var(--border-strong); }
+  .code-out-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 0;
+    font-size: 10px;
+    letter-spacing: .16em;
+    color: var(--text-dim);
+  }
+  .code-out-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .code-out.running .code-out-dot { background: var(--accent); animation: outpulse 1s infinite; }
+  .code-out.ok .code-out-dot { background: #7ee787; }
+  .code-out.err .code-out-dot { background: var(--danger); }
+  @keyframes outpulse { 50% { opacity: .25; } }
+  .code-out-meta { margin-left: auto; letter-spacing: .06em; text-transform: lowercase; }
+  .msg.bot .code-out pre { padding: 8px 12px 10px; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .code-out.err pre { color: var(--danger); }
+  .code-out pre:empty::before { content: "(no output)"; color: var(--text-dim); }
 
   /* Actions under bot replies */
   .msg-actions {
@@ -431,7 +474,6 @@
   }
   #input-wrap:focus-within {
     border-color: var(--accent-dim);
-    box-shadow: var(--hairline), 0 0 0 3px var(--accent-soft);
   }
   #input-wrap .prompt {
     color: var(--accent);
@@ -707,6 +749,7 @@
     }
     .act:hover { color: var(--accent); }
     .code-copy:hover { color: var(--accent); border-color: var(--accent-dim); }
+    .code-run:hover:not(:disabled) { border-color: var(--accent); }
     #mic:hover { color: var(--text); }
     #send:hover:not(:disabled):not(.busy) {
       background: linear-gradient(180deg, #6ceeff, #00d4ec);

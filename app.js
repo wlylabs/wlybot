@@ -302,6 +302,84 @@
     }
   }
 
+  /* ---------- Run Python in-browser (Pyodide) ---------- */
+  var PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
+  var RUNNABLE_LANGS = { python: 1, py: 1, python3: 1 };
+  var pyodidePromise = null;
+  var pyRunning = false;
+
+  function getPyodide() {
+    if (!pyodidePromise) {
+      pyodidePromise = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = PYODIDE_CDN + 'pyodide.js';
+        s.onload = function () {
+          window.loadPyodide({ indexURL: PYODIDE_CDN }).then(resolve, reject);
+        };
+        s.onerror = function () {
+          reject(new Error('Could not load the Python runtime. Check your connection and try again.'));
+        };
+        document.head.appendChild(s);
+      });
+      pyodidePromise.catch(function () { pyodidePromise = null; });
+    }
+    return pyodidePromise;
+  }
+
+  function runPython(block, btn) {
+    if (pyRunning) return;
+    pyRunning = true;
+
+    var codeEl = block.querySelector('code');
+    var source = (codeEl ? codeEl.textContent : '').replace(/\n$/, '');
+
+    var out = block.querySelector('.code-out');
+    if (!out) {
+      out = document.createElement('div');
+      out.className = 'code-out';
+      out.innerHTML = '<div class="code-out-head"><span class="code-out-dot"></span>' +
+        '<span class="code-out-label">OUTPUT</span><span class="code-out-meta"></span></div><pre></pre>';
+      block.appendChild(out);
+    }
+    var label = out.querySelector('.code-out-label');
+    var meta = out.querySelector('.code-out-meta');
+    var body = out.querySelector('pre');
+
+    out.className = 'code-out running';
+    label.textContent = pyodidePromise ? 'RUNNING' : 'LOADING PYTHON…';
+    meta.textContent = '';
+    body.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'running';
+
+    function write(line) { body.textContent += line + '\n'; }
+    function finish(state, labelText, t0) {
+      out.className = 'code-out ' + state;
+      label.textContent = labelText;
+      if (t0) meta.textContent = ((performance.now() - t0) / 1000).toFixed(2) + 's';
+      btn.disabled = false;
+      btn.textContent = 'run';
+      pyRunning = false;
+    }
+
+    getPyodide().then(function (py) {
+      label.textContent = 'RUNNING';
+      py.setStdout({ batched: write });
+      py.setStderr({ batched: write });
+      var t0 = performance.now();
+      py.runPythonAsync(source).then(function (result) {
+        if (result !== undefined) write(String(result));
+        finish('ok', 'DONE', t0);
+      }, function (err) {
+        body.textContent = String(err && err.message ? err.message : err);
+        finish('err', 'ERROR', t0);
+      });
+    }, function (err) {
+      body.textContent = String(err && err.message ? err.message : err);
+      finish('err', 'ERROR');
+    });
+  }
+
   /* ---------- Message rendering ---------- */
   function addBubble(role, content) {
     var el = document.createElement('div');
@@ -327,6 +405,15 @@
           copyText((code ? code.textContent : block.textContent).replace(/\n$/, ''), btn);
         });
         bar.appendChild(btn);
+        var langEl = bar.querySelector('.codelang');
+        var lang = langEl ? langEl.textContent.trim().toLowerCase() : '';
+        if (RUNNABLE_LANGS[lang]) {
+          var runBtn = document.createElement('button');
+          runBtn.className = 'code-run';
+          runBtn.textContent = 'run';
+          runBtn.addEventListener('click', function () { runPython(block, runBtn); });
+          bar.appendChild(runBtn);
+        }
       })(blocks[i]);
     }
   }
