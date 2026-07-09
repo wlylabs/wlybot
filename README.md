@@ -11,12 +11,15 @@
 
 ## Fitur
 
-- **Multi-provider dengan fallback otomatis** — Groq sebagai provider utama; jika gagal (rate limit, gangguan, key invalid), server berpindah sendiri ke Gemini, lalu OpenRouter, dalam satu request. Provider dan model yang menjawab ditampilkan di bawah setiap balasan.
+- **Multi-provider dengan fallback otomatis** — Groq sebagai provider utama; jika gagal (rate limit, gangguan, key invalid), server berpindah sendiri ke Gemini, lalu OpenRouter, dalam satu request.
 - **Streaming** — respons mengalir kata per kata, bisa dihentikan kapan saja.
-- **Mobile-first** — dark theme, bottom sheet pengaturan, dukungan safe area (notch), tidak memicu auto-zoom iOS, dan installable sebagai PWA di home screen.
+- **Multi-percakapan** — banyak chat sekaligus dengan judul otomatis; buat, buka kembali, dan hapus percakapan dari sheet riwayat. Semua tersimpan di perangkat (localStorage), bukan di server.
+- **Regenerate & copy** — ulangi jawaban terakhir dengan satu ketukan, salin seluruh jawaban atau blok kode saja.
+- **Input suara** — dikte pesan lewat Web Speech API (mengikuti bahasa perangkat), tanpa server tambahan.
+- **Ekspor chat** — unduh percakapan aktif sebagai file Markdown.
+- **Mobile-first** — dark theme terminal, bottom sheet, dukungan safe area (notch), tidak memicu auto-zoom iOS, dan installable sebagai PWA di home screen.
 - **API key aman** — semua key disimpan di environment variable Vercel dan hanya dibaca di Edge Function. Browser tidak pernah menerima key.
-- **Riwayat lokal** — percakapan tersimpan di perangkat (localStorage), bukan di server.
-- **Persona yang konsisten** — hangat, jujur soal ketidakpastian, langsung ke inti, tanpa emoji kecuali diminta.
+- **Persona yang konsisten** — hangat, jujur soal ketidakpastian, langsung ke inti, memakai aku-kamu dalam bahasa Indonesia, tanpa emoji kecuali diminta.
 
 ## Arsitektur
 
@@ -35,7 +38,7 @@ Stream teks polos kembali ke browser
 
 | File | Peran |
 |---|---|
-| `index.html` | UI chat statis: render markdown ringan, streaming, pengaturan provider |
+| `index.html` | UI chat statis: render markdown ringan, streaming, multi-percakapan, voice input, ekspor, pengaturan provider |
 | `api/chat.js` | Edge Function: validasi, fallback provider, normalisasi SSE menjadi stream teks |
 | `favicon.svg` + `icon-*.png` | Logo dan ikon aplikasi |
 | `site.webmanifest` | Metadata PWA |

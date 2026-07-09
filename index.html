@@ -53,8 +53,8 @@
   header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: calc(12px + var(--sat)) 16px 12px;
+    gap: 8px;
+    padding: calc(12px + var(--sat)) 14px 12px;
     background: color-mix(in srgb, var(--bg) 90%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -226,6 +226,7 @@
     color: var(--accent);
   }
   .msg.bot pre {
+    position: relative;
     background: #000;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -242,6 +243,45 @@
     color: var(--text-dim);
     margin: 0 0 10px;
   }
+  .code-copy {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: .08em;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  .code-copy.done { color: var(--accent); border-color: var(--accent-dim); }
+
+  /* Actions under bot replies */
+  .msg-actions {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+  }
+  .act {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    transition: color .15s;
+  }
+  .act::before { content: "["; color: var(--border); font-weight: 400; }
+  .act::after { content: "]"; color: var(--border); font-weight: 400; }
+  .act:active, .act.done { color: var(--accent); }
 
   /* Typing indicator: blinking block cursor */
   .cursor-blink {
@@ -295,6 +335,20 @@
     caret-color: var(--accent);
   }
   #input::placeholder { color: var(--text-dim); }
+  #mic {
+    width: 34px; height: 34px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    align-self: flex-end;
+  }
+  #mic svg { width: 18px; height: 18px; }
+  #mic.rec { color: var(--accent); animation: recpulse 1.2s infinite; }
+  @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   #send {
     width: 40px; height: 40px;
     border: none;
@@ -315,7 +369,7 @@
   #send.busy .icon-send { display: none; }
   #send.busy .icon-stop { display: block; }
 
-  /* Settings bottom sheet */
+  /* Bottom sheets */
   #sheet-backdrop {
     position: fixed;
     inset: 0;
@@ -325,7 +379,7 @@
     pointer-events: none;
     transition: opacity .2s;
   }
-  #sheet {
+  .sheet {
     position: fixed;
     left: 0; right: 0; bottom: 0;
     max-width: 760px;
@@ -340,21 +394,23 @@
     transition: transform .25s cubic-bezier(.3,.9,.3,1);
   }
   body.sheet-open #sheet { transform: none; }
-  body.sheet-open #sheet-backdrop { opacity: 1; pointer-events: auto; }
+  body.chats-open #chats-sheet { transform: none; }
+  body.sheet-open #sheet-backdrop,
+  body.chats-open #sheet-backdrop { opacity: 1; pointer-events: auto; }
   .sheet-handle {
     width: 40px; height: 3px;
     background: var(--border);
     margin: 8px auto 18px;
   }
-  #sheet h3 {
+  .sheet h3 {
     font-size: 13px;
     font-weight: 700;
     letter-spacing: .16em;
     margin-bottom: 6px;
     text-transform: uppercase;
   }
-  #sheet h3::before { content: "// "; color: var(--accent); }
-  #sheet .hint { font-size: 11.5px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.6; }
+  .sheet h3::before { content: "// "; color: var(--accent); }
+  .sheet .hint { font-size: 11.5px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.6; }
   .provider-option {
     display: flex;
     align-items: center;
@@ -384,6 +440,20 @@
     box-shadow: inset 0 0 0 2px var(--bg);
   }
   .provider-option small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 3px; }
+  .sheet-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    letter-spacing: .04em;
+    cursor: pointer;
+  }
+  .sheet-btn:active { border-color: var(--accent-dim); color: var(--accent); }
   .sheet-danger {
     width: 100%;
     margin-top: 8px;
@@ -397,6 +467,55 @@
     letter-spacing: .04em;
     cursor: pointer;
   }
+
+  /* Conversations sheet */
+  .sheet-new {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 14px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: .12em;
+    cursor: pointer;
+  }
+  .sheet-new:active { background: var(--accent-press); }
+  #chats-list { max-height: 50dvh; overflow-y: auto; }
+  .chat-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .chat-item {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    padding: 11px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .chat-item.active { border-color: var(--accent); }
+  .chat-item .t { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-item .t::before { content: "> "; color: var(--accent); }
+  .chat-item .d { display: block; font-size: 10.5px; color: var(--text-dim); margin-top: 3px; letter-spacing: .08em; }
+  .chat-del {
+    width: 44px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .chat-del:active { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  .chats-empty { color: var(--text-dim); font-size: 12px; text-align: center; padding: 10px 0 4px; }
 </style>
 </head>
 <body>
@@ -404,8 +523,14 @@
   <header>
     <div class="title-wrap">
       <div class="wordmark">WLYB<span class="o">0</span>T</div>
-      <div class="subtitle" id="status">Ready to help</div>
+      <div class="subtitle" id="status">ready</div>
     </div>
+    <button class="icon-btn" id="new-btn" aria-label="New chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="icon-btn" id="history-btn" aria-label="Conversations">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </button>
     <button class="icon-btn" id="settings-btn" aria-label="Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"/>
@@ -420,6 +545,13 @@
     <div id="input-wrap">
       <span class="prompt">$</span>
       <textarea id="input" rows="1" placeholder="type a message" autocomplete="off"></textarea>
+      <button id="mic" aria-label="Voice input">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+        </svg>
+      </button>
     </div>
     <button id="send" aria-label="Send" disabled>
       <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -433,12 +565,22 @@
 </div>
 
 <div id="sheet-backdrop"></div>
-<div id="sheet" role="dialog" aria-label="Settings">
+
+<div id="chats-sheet" class="sheet" role="dialog" aria-label="Conversations">
+  <div class="sheet-handle"></div>
+  <h3>Conversations</h3>
+  <p class="hint">Chats are stored on this device only.</p>
+  <button class="sheet-new" id="sheet-new-btn">+ NEW CHAT</button>
+  <div id="chats-list"></div>
+</div>
+
+<div id="sheet" class="sheet" role="dialog" aria-label="Settings">
   <div class="sheet-handle"></div>
   <h3>AI Model</h3>
   <p class="hint">API keys are configured on the server (Vercel environment variables), never on this device. Auto mode uses Groq first and falls back to Gemini, then OpenRouter, if it fails.</p>
   <div id="provider-list"></div>
-  <button class="sheet-danger" id="clear-btn">Clear chat history</button>
+  <button class="sheet-btn" id="export-btn">Export this chat (.md)</button>
+  <button class="sheet-danger" id="clear-btn">Delete this chat</button>
 </div>
 
 <script>
@@ -448,10 +590,13 @@
   var chatEl = document.getElementById('chat');
   var inputEl = document.getElementById('input');
   var sendBtn = document.getElementById('send');
+  var micBtn = document.getElementById('mic');
   var statusEl = document.getElementById('status');
   var backdropEl = document.getElementById('sheet-backdrop');
 
-  var STORAGE_MSGS = 'wlybot.messages';
+  var STORAGE_CHATS = 'wlybot.chats';
+  var STORAGE_ACTIVE = 'wlybot.active';
+  var STORAGE_LEGACY = 'wlybot.messages';
   var STORAGE_PROVIDER = 'wlybot.provider';
 
   var PROVIDER_LABELS = [
@@ -461,21 +606,105 @@
     { id: 'openrouter', name: 'OpenRouter', desc: 'Llama 3.3 70B (free tier)' }
   ];
 
-  var messages = [];
   var busy = false;
   var abortCtrl = null;
 
+  /* ---------- Multi-chat state ---------- */
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  var chats = [];
   try {
-    messages = JSON.parse(localStorage.getItem(STORAGE_MSGS) || '[]');
-    if (!Array.isArray(messages)) messages = [];
-  } catch (e) { messages = []; }
+    chats = JSON.parse(localStorage.getItem(STORAGE_CHATS) || '[]');
+    if (!Array.isArray(chats)) chats = [];
+  } catch (e) { chats = []; }
+  chats = chats.filter(function (c) {
+    return c && typeof c.id === 'string' && Array.isArray(c.messages);
+  });
+
+  // Migrate the pre-multi-chat single history into a conversation.
+  try {
+    var legacy = JSON.parse(localStorage.getItem(STORAGE_LEGACY) || '[]');
+    if (Array.isArray(legacy) && legacy.length) {
+      var firstUser = null;
+      for (var li = 0; li < legacy.length; li++) {
+        if (legacy[li].role === 'user') { firstUser = legacy[li].content; break; }
+      }
+      chats.unshift({ id: uid(), title: (firstUser || 'Chat').slice(0, 60), messages: legacy, updated: Date.now() });
+      localStorage.removeItem(STORAGE_LEGACY);
+    }
+  } catch (e) {}
+
+  var current = null;
+  var activeId = localStorage.getItem(STORAGE_ACTIVE);
+  for (var ci = 0; ci < chats.length; ci++) {
+    if (chats[ci].id === activeId) { current = chats[ci]; break; }
+  }
+  if (!current) current = { id: uid(), title: '', messages: [], updated: Date.now() };
+  var messages = current.messages;
+
+  function persist() {
+    try {
+      var out = chats
+        .filter(function (c) { return c.messages.length > 0; })
+        .sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); })
+        .slice(0, 30)
+        .map(function (c) {
+          return { id: c.id, title: c.title, updated: c.updated, messages: c.messages.slice(-60) };
+        });
+      localStorage.setItem(STORAGE_CHATS, JSON.stringify(out));
+      localStorage.setItem(STORAGE_ACTIVE, current.id);
+    } catch (e) {}
+  }
+
+  function sortedChats() {
+    return chats
+      .filter(function (c) { return c.messages.length > 0; })
+      .sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+  }
+
+  function newChat() {
+    if (busy) return;
+    if (messages.length === 0) { closeSheets(); return; }
+    current = { id: uid(), title: '', messages: [], updated: Date.now() };
+    messages = current.messages;
+    persist();
+    renderAll();
+    closeSheets();
+  }
+
+  function openChat(id) {
+    if (busy) return;
+    for (var i = 0; i < chats.length; i++) {
+      if (chats[i].id === id) {
+        current = chats[i];
+        messages = current.messages;
+        persist();
+        renderAll();
+        closeSheets();
+        return;
+      }
+    }
+  }
+
+  function deleteChat(id) {
+    if (busy) return;
+    if (!confirm('Delete this conversation?')) return;
+    for (var i = 0; i < chats.length; i++) {
+      if (chats[i].id === id) { chats.splice(i, 1); break; }
+    }
+    if (current.id === id) {
+      current = { id: uid(), title: '', messages: [], updated: Date.now() };
+      messages = current.messages;
+      renderAll();
+    }
+    persist();
+    renderChats();
+  }
 
   function getProvider() {
     return localStorage.getItem(STORAGE_PROVIDER) || 'auto';
-  }
-
-  function save() {
-    try { localStorage.setItem(STORAGE_MSGS, JSON.stringify(messages.slice(-60))); } catch (e) {}
   }
 
   function scrollToBottom() {
@@ -556,6 +785,35 @@
     return html;
   }
 
+  /* ---------- Clipboard ---------- */
+  function copyText(text, btn) {
+    function done() {
+      if (!btn) return;
+      var old = btn.textContent;
+      btn.textContent = 'copied';
+      btn.classList.add('done');
+      setTimeout(function () {
+        btn.textContent = old;
+        btn.classList.remove('done');
+      }, 1200);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); done(); });
+    } else {
+      fallback(); done();
+    }
+  }
+
   /* ---------- Message rendering ---------- */
   function addBubble(role, content) {
     var el = document.createElement('div');
@@ -565,6 +823,47 @@
     chatEl.appendChild(el);
     scrollToBottom();
     return el;
+  }
+
+  function addCodeCopies(el) {
+    var pres = el.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+      (function (pre) {
+        var btn = document.createElement('button');
+        btn.className = 'code-copy';
+        btn.textContent = 'copy';
+        btn.addEventListener('click', function () {
+          var code = pre.querySelector('code');
+          copyText((code ? code.textContent : pre.textContent).replace(/\n$/, ''), btn);
+        });
+        pre.appendChild(btn);
+      })(pres[i]);
+    }
+  }
+
+  function removeRegenButtons() {
+    var olds = chatEl.querySelectorAll('.act-regen');
+    for (var i = 0; i < olds.length; i++) olds[i].remove();
+  }
+
+  function decorateBot(el, raw, canRegen) {
+    addCodeCopies(el);
+    removeRegenButtons();
+    var row = document.createElement('div');
+    row.className = 'msg-actions';
+    var c = document.createElement('button');
+    c.className = 'act';
+    c.textContent = 'copy';
+    c.addEventListener('click', function () { copyText(raw, c); });
+    row.appendChild(c);
+    if (canRegen) {
+      var r = document.createElement('button');
+      r.className = 'act act-regen';
+      r.textContent = 'regen';
+      r.addEventListener('click', regenerate);
+      row.appendChild(r);
+    }
+    el.appendChild(row);
   }
 
   function showEmptyState() {
@@ -581,6 +880,7 @@
         '<div class="empty-feats">' +
           '<span>multi-provider</span>' +
           '<span>streaming</span>' +
+          '<span>voice input</span>' +
           '<span>no tracking</span>' +
         '</div>' +
       '</div>';
@@ -598,7 +898,9 @@
     chatEl.innerHTML = '';
     if (messages.length === 0) { showEmptyState(); return; }
     for (var i = 0; i < messages.length; i++) {
-      addBubble(messages[i].role === 'user' ? 'user' : 'bot', messages[i].content);
+      var m = messages[i];
+      var el = addBubble(m.role === 'user' ? 'user' : 'bot', m.content);
+      if (m.role !== 'user') decorateBot(el, m.content, i === messages.length - 1);
     }
   }
 
@@ -616,17 +918,8 @@
     sendBtn.disabled = !busy && inputEl.value.trim() === '';
   }
 
-  function sendMessage() {
-    var text = inputEl.value.trim();
-    if (!text || busy) return;
-
-    if (messages.length === 0) chatEl.innerHTML = '';
-    messages.push({ role: 'user', content: text });
-    save();
-    addBubble('user', text);
-
-    inputEl.value = '';
-    onInput();
+  function requestCompletion() {
+    var convo = messages; // capture: user may not switch chats while busy, but be safe
     setBusy(true);
 
     var botEl = document.createElement('div');
@@ -642,7 +935,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: abortCtrl.signal,
-      body: JSON.stringify({ messages: messages, provider: getProvider() })
+      body: JSON.stringify({ messages: convo, provider: getProvider() })
     }).then(function (res) {
       if (!res.ok) {
         return res.json().then(function (data) {
@@ -680,13 +973,46 @@
         botEl.remove();
         addBubble('error', 'No response from the model. Try again or switch providers in settings.');
       } else {
-        messages.push({ role: 'assistant', content: acc });
-        save();
+        convo.push({ role: 'assistant', content: acc });
+        current.updated = Date.now();
+        persist();
         botEl.innerHTML = renderMarkdown(acc);
+        decorateBot(botEl, acc, convo === messages);
       }
       setBusy(false);
       scrollToBottom();
     }
+  }
+
+  function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text || busy) return;
+
+    if (messages.length === 0) chatEl.innerHTML = '';
+    removeRegenButtons();
+
+    if (chats.indexOf(current) === -1) chats.unshift(current);
+    if (!current.title) current.title = text.slice(0, 60);
+    current.updated = Date.now();
+
+    messages.push({ role: 'user', content: text });
+    persist();
+    addBubble('user', text);
+
+    inputEl.value = '';
+    onInput();
+    requestCompletion();
+  }
+
+  function regenerate() {
+    if (busy) return;
+    if (!messages.length || messages[messages.length - 1].role !== 'assistant') return;
+    messages.pop();
+    current.updated = Date.now();
+    persist();
+    var bots = chatEl.querySelectorAll('.msg.bot');
+    if (bots.length) bots[bots.length - 1].remove();
+    requestCompletion();
   }
 
   /* ---------- Input ---------- */
@@ -710,42 +1036,151 @@
     }
   });
 
-  /* ---------- Bottom sheet ---------- */
+  /* ---------- Voice input (Web Speech API) ---------- */
+  var SRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SRec) {
+    micBtn.style.display = 'none';
+  } else {
+    var rec = null;
+    var recActive = false;
+    var recBase = '';
+    micBtn.addEventListener('click', function () {
+      if (recActive) {
+        try { rec.stop(); } catch (e) {}
+        return;
+      }
+      rec = new SRec();
+      rec.lang = navigator.language || 'id-ID';
+      rec.interimResults = true;
+      recBase = inputEl.value ? inputEl.value.replace(/\s+$/, '') + ' ' : '';
+      rec.onresult = function (e) {
+        var t = '';
+        for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+        inputEl.value = recBase + t;
+        onInput();
+      };
+      rec.onend = function () {
+        recActive = false;
+        micBtn.classList.remove('rec');
+        updateSendState();
+      };
+      rec.onerror = function () {};
+      try {
+        rec.start();
+        recActive = true;
+        micBtn.classList.add('rec');
+      } catch (e) {}
+    });
+  }
+
+  /* ---------- Export ---------- */
+  function exportChat() {
+    if (!messages.length) {
+      alert('Nothing to export yet.');
+      return;
+    }
+    var lines = ['# Wlybot chat', ''];
+    for (var i = 0; i < messages.length; i++) {
+      var m = messages[i];
+      lines.push((m.role === 'user' ? '**You:**' : '**Wlybot:**') + '\n\n' + m.content);
+      lines.push('');
+    }
+    var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'wlybot-chat-' + new Date().toISOString().slice(0, 10) + '.md';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  /* ---------- Bottom sheets ---------- */
   function renderProviders() {
     var list = document.getElementById('provider-list');
-    var current = getProvider();
+    var currentProvider = getProvider();
     list.innerHTML = '';
     PROVIDER_LABELS.forEach(function (p) {
       var btn = document.createElement('button');
-      btn.className = 'provider-option' + (p.id === current ? ' selected' : '');
+      btn.className = 'provider-option' + (p.id === currentProvider ? ' selected' : '');
       btn.innerHTML = '<span class="radio"></span><span>' + p.name + '<small>' + p.desc + '</small></span>';
       btn.addEventListener('click', function () {
         localStorage.setItem(STORAGE_PROVIDER, p.id);
         renderProviders();
-        closeSheet();
+        closeSheets();
       });
       list.appendChild(btn);
     });
   }
-  function openSheet() { renderProviders(); document.body.classList.add('sheet-open'); }
-  function closeSheet() { document.body.classList.remove('sheet-open'); }
-  document.getElementById('settings-btn').addEventListener('click', openSheet);
-  backdropEl.addEventListener('click', closeSheet);
+
+  function fmtDate(ts) {
+    var d = new Date(ts || 0);
+    var now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+      return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+    return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2);
+  }
+
+  function renderChats() {
+    var list = document.getElementById('chats-list');
+    list.innerHTML = '';
+    var sorted = sortedChats();
+    if (!sorted.length) {
+      list.innerHTML = '<div class="chats-empty">no conversations yet</div>';
+      return;
+    }
+    sorted.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'chat-row';
+
+      var item = document.createElement('button');
+      item.className = 'chat-item' + (c.id === current.id ? ' active' : '');
+      var t = document.createElement('span');
+      t.className = 't';
+      t.textContent = c.title || 'Chat';
+      var d = document.createElement('span');
+      d.className = 'd';
+      d.textContent = fmtDate(c.updated) + ' · ' + c.messages.length + ' msg';
+      item.appendChild(t);
+      item.appendChild(d);
+      item.addEventListener('click', function () { openChat(c.id); });
+
+      var del = document.createElement('button');
+      del.className = 'chat-del';
+      del.setAttribute('aria-label', 'Delete conversation');
+      del.textContent = '×';
+      del.addEventListener('click', function () { deleteChat(c.id); });
+
+      row.appendChild(item);
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  function openSettings() { closeSheets(); renderProviders(); document.body.classList.add('sheet-open'); }
+  function openChats() { closeSheets(); renderChats(); document.body.classList.add('chats-open'); }
+  function closeSheets() {
+    document.body.classList.remove('sheet-open');
+    document.body.classList.remove('chats-open');
+  }
+  document.getElementById('settings-btn').addEventListener('click', openSettings);
+  document.getElementById('history-btn').addEventListener('click', openChats);
+  document.getElementById('new-btn').addEventListener('click', newChat);
+  document.getElementById('sheet-new-btn').addEventListener('click', newChat);
+  document.getElementById('export-btn').addEventListener('click', exportChat);
+  backdropEl.addEventListener('click', closeSheets);
 
   document.getElementById('clear-btn').addEventListener('click', function () {
-    if (!confirm('Delete all chat history?')) return;
-    messages = [];
-    save();
-    closeSheet();
+    if (!confirm('Delete this chat?')) return;
+    messages.splice(0, messages.length);
+    current.title = '';
+    persist();
+    closeSheets();
     renderAll();
   });
 
   /* ---------- Init ---------- */
   renderAll();
   scrollToBottom();
-
-  // Initial status in terminal style
-  statusEl.textContent = 'ready';
 })();
 </script>
 </body>
