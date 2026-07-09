@@ -6,12 +6,20 @@ const PERSONA =
   process.env.SYSTEM_PERSONA ||
   `You are Wly, a sharp, warm, and genuinely capable AI assistant. You talk like a smart, kind colleague — personable and natural, never like a corporate FAQ bot. Be genuinely helpful, not sycophantic.`;
 
-const RULES = `Language (absolute rule, re-check on EVERY message): always reply in the language of the user's most recent message. Indonesian in, Indonesian out; English in, English out. If the user switches language mid-conversation, switch immediately — the latest message always wins over earlier ones. Never mix languages in one reply unless the user does. Code, code comments inside code blocks, and technical identifiers stay as-is, but all explanation around them follows the user's language.
+// The knowledge-limits bullet depends on whether web search is available
+// (TAVILY_API_KEY set): with search the model is told to use the tool,
+// without it the model is told to admit it cannot verify current facts.
+const KNOWLEDGE_OFFLINE = `- You have NO internet access and your knowledge has a training cutoff. For current news, prices, exchange rates, weather, schedules, or anything likely to have changed, say plainly that you cannot verify it and suggest where the user can check. Never invent numbers, links, citations, or names.`;
+
+const KNOWLEDGE_SEARCH = `- You can search the web with the web_search tool. For current news, prices, exchange rates, weather, schedules, or anything likely to have changed since your training data, call web_search instead of guessing — just call it, do not announce that you are about to search. Base the answer on the results and cite the sources as Markdown links. If the results do not answer the question, say so honestly. Never invent numbers, links, citations, or names.`;
+
+function buildRules(withSearch) {
+  return `Language (absolute rule, re-check on EVERY message): always reply in the language of the user's most recent message. Indonesian in, Indonesian out; English in, English out. If the user switches language mid-conversation, switch immediately — the latest message always wins over earlier ones. Never mix languages in one reply unless the user does. Code, code comments inside code blocks, and technical identifiers stay as-is, but all explanation around them follows the user's language.
 
 Tone and register: mirror the user. If they write casually, be relaxed and conversational; if they write formally, be polite and measured. In Indonesian, choose pronouns and register that match how the user talks and keep them consistent within a reply — write like a real person chatting, not a textbook.
 
 Honesty and knowledge limits:
-- You have NO internet access and your knowledge has a training cutoff. For current news, prices, exchange rates, weather, schedules, or anything likely to have changed, say plainly that you cannot verify it and suggest where the user can check. Never invent numbers, links, citations, or names.
+${withSearch ? KNOWLEDGE_SEARCH : KNOWLEDGE_OFFLINE}
 - If you are unsure, say so. A short honest "I don't know" beats a confident guess.
 - Push back politely when the user's premise is wrong; do not just agree.
 
@@ -44,6 +52,7 @@ Itu bikin isinya ke tengah secara horizontal dan vertikal. Kalau cuma butuh hori
 
 User: "what's the capital of australia?"
 Assistant: "Canberra — not Sydney. Sydney is the biggest city, but the capital has been Canberra since 1913."`;
+}
 
 // Small per-provider reinforcements: Llama-family models (Groq/OpenRouter)
 // tend to drift into English and over-explain, so they get an extra nudge.
@@ -52,6 +61,45 @@ const PROVIDER_NOTES = {
   openrouter: 'Reminder: re-read the language rule before every reply, and keep answers tight — no padding, no restating the question.',
   gemini: '',
 };
+
+// Lightweight Indonesian/English detection for the user's latest message.
+// The models are told to mirror the user's language, but smaller models
+// drift, so we also detect it server-side and inject an explicit
+// per-request instruction. Returns 'id', 'en', or null when unsure.
+const ID_WORDS = new Set(
+  'yang tidak gak ga nggak enggak apa apakah gimana bagaimana kenapa mengapa kapan dimana siapa aku kamu saya anda gua gue lu lo kita kami mereka dia ini itu bisa boleh dengan untuk dari kalau kalo aja saja banget sih dong deh nih kok ya iya bukan ada dan atau juga lagi biar gitu gini kayak seperti sama jadi pakai pake mau udah sudah belum sedang akan tolong terima kasih makasih selamat halo hai coba buat bikin cara caranya berapa hitung jelaskan contoh misalnya'.split(
+    ' '
+  )
+);
+const EN_WORDS = new Set(
+  'the is are was were be been am what how why when where which who whom can could would should shall will do does did done have has had i you we they he she it this that these those my your our their me him her us them a an of to in on at for with and or not but if then than so because please thanks thank hello hi hey want need make write explain help tell give show'.split(
+    ' '
+  )
+);
+
+function detectLanguage(text) {
+  // Strip code blocks and inline code so English keywords in code
+  // don't skew detection of the surrounding prose.
+  const prose = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  const words = prose.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  let id = 0;
+  let en = 0;
+  for (const w of words) {
+    if (ID_WORDS.has(w)) id++;
+    if (EN_WORDS.has(w)) en++;
+  }
+  if (id === en) return null;
+  return id > en ? 'id' : 'en';
+}
+
+function languageReminder(messages) {
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+  if (!lastUser) return '';
+  const lang = detectLanguage(lastUser.content);
+  if (!lang) return '';
+  const name = lang === 'en' ? 'English' : 'Indonesian';
+  return `IMPORTANT: The user's most recent message is written in ${name}. Write your ENTIRE reply in ${name}, regardless of the language used earlier in the conversation.`;
+}
 
 function buildSystemPrompt(provider) {
   const today = new Date().toLocaleDateString('en-GB', {
@@ -63,7 +111,7 @@ function buildSystemPrompt(provider) {
   });
   const note = PROVIDER_NOTES[provider];
   return (
-    `${PERSONA}\n\nToday's date is ${today} (Asia/Jakarta).\n\n${RULES}` +
+    `${PERSONA}\n\nToday's date is ${today} (Asia/Jakarta).\n\n${buildRules(searchEnabled())}` +
     (note ? `\n\n${note}` : '')
   );
 }
@@ -109,127 +157,344 @@ function sanitizeMessages(messages) {
   return clean.slice(-40);
 }
 
-// Convert OpenAI-style SSE (Groq/OpenRouter) into a plain text stream.
-function openAiSseToText(upstreamBody) {
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buffer = '';
-  return upstreamBody.pipeThrough(
-    new TransformStream({
-      transform(chunk, controller) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const data = trimmed.slice(5).trim();
-          if (data === '[DONE]') continue;
-          try {
-            const text = JSON.parse(data).choices?.[0]?.delta?.content;
-            if (text) controller.enqueue(encoder.encode(text));
-          } catch {
-            // incomplete JSON fragment; ignore
-          }
-        }
-      },
-    })
-  );
+// ---------------------------------------------------------------------------
+// Tools. web_search is only offered to the model when TAVILY_API_KEY is set,
+// so deployments without it behave exactly as before.
+// ---------------------------------------------------------------------------
+
+function searchEnabled() {
+  return Boolean(process.env.TAVILY_API_KEY);
 }
 
-// Convert Gemini SSE (alt=sse) into a plain text stream.
-function geminiSseToText(upstreamBody) {
+const SEARCH_DESCRIPTION =
+  'Search the web for up-to-date information: news, prices, exchange rates, weather, schedules, sports results, or any fact that may have changed after your training data. Returns result snippets with source URLs.';
+
+const SEARCH_PARAMETERS = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'string',
+      description: 'The search query. Use the language most likely to find good results.',
+    },
+  },
+  required: ['query'],
+};
+
+const OPENAI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: SEARCH_DESCRIPTION,
+      parameters: SEARCH_PARAMETERS,
+    },
+  },
+];
+
+const GEMINI_TOOLS = [
+  {
+    functionDeclarations: [
+      { name: 'web_search', description: SEARCH_DESCRIPTION, parameters: SEARCH_PARAMETERS },
+    ],
+  },
+];
+
+// How many rounds of tool calls a single request may trigger before the
+// model is forced to answer with what it has (guards against loops).
+const MAX_TOOL_ROUNDS = 4;
+
+async function webSearch(query) {
+  try {
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
+      },
+      body: JSON.stringify({ query, max_results: 5, include_answer: 'basic' }),
+    });
+    if (!res.ok) {
+      return `The search request failed (HTTP ${res.status}). Tell the user you could not search the web right now.`;
+    }
+    const data = await res.json();
+    const lines = [];
+    if (data.answer) lines.push(`Suggested answer: ${data.answer}`);
+    for (const r of data.results || []) {
+      lines.push(`- ${r.title} — ${r.url}\n  ${String(r.content || '').slice(0, 400)}`);
+    }
+    return lines.length ? lines.join('\n') : 'No results found for that query.';
+  } catch (err) {
+    return `The search request failed (${err.message}). Tell the user you could not search the web right now.`;
+  }
+}
+
+async function runTool(name, args) {
+  if (name === 'web_search') {
+    const query = typeof args.query === 'string' ? args.query.trim() : '';
+    if (!query) return 'Error: the "query" argument is required.';
+    return webSearch(query);
+  }
+  return `Error: unknown tool "${name}".`;
+}
+
+// ---------------------------------------------------------------------------
+// Stream consumers. Each reads one upstream SSE response to the end,
+// forwarding text deltas to onText and collecting any tool calls.
+// ---------------------------------------------------------------------------
+
+async function consumeOpenAiStream(body, onText) {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
   let buffer = '';
-  return upstreamBody.pipeThrough(
-    new TransformStream({
-      transform(chunk, controller) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          try {
-            const parsed = JSON.parse(trimmed.slice(5).trim());
-            const parts = parsed.candidates?.[0]?.content?.parts || [];
-            for (const part of parts) {
-              if (part.text) controller.enqueue(encoder.encode(part.text));
+  let text = '';
+  const toolCalls = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === '[DONE]') continue;
+      let delta;
+      try {
+        delta = JSON.parse(data).choices?.[0]?.delta;
+      } catch {
+        continue; // incomplete JSON fragment
+      }
+      if (!delta) continue;
+      if (delta.content) {
+        text += delta.content;
+        onText(delta.content);
+      }
+      // Tool calls stream in fragments keyed by index: the first fragment
+      // carries id + name, later ones append to the arguments JSON string.
+      for (const tc of delta.tool_calls || []) {
+        const i = tc.index ?? 0;
+        if (!toolCalls[i]) toolCalls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+        if (tc.id) toolCalls[i].id = tc.id;
+        if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+        if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+      }
+    }
+  }
+  return { text, toolCalls: toolCalls.filter(Boolean) };
+}
+
+async function consumeGeminiStream(body, onText) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  const calls = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(trimmed.slice(5).trim());
+      } catch {
+        continue; // incomplete JSON fragment
+      }
+      const parts = parsed.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.text) {
+          text += part.text;
+          onText(part.text);
+        }
+        if (part.functionCall) {
+          calls.push({ name: part.functionCall.name, args: part.functionCall.args || {} });
+        }
+      }
+    }
+  }
+  return { text, calls };
+}
+
+async function describeFailure(res) {
+  let detail = '';
+  try {
+    detail = (await res.text()).slice(0, 300);
+  } catch {
+    // ignore
+  }
+  return `HTTP ${res.status} ${detail}`.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Agent loops. The first upstream call happens before we commit to a
+// Response so provider fallback still works; after that, tool rounds run
+// inside the ReadableStream while text streams to the browser.
+// ---------------------------------------------------------------------------
+
+async function openAiAgentResponse(url, apiKey, model, messages, systemPrompt, reminder, extraHeaders = {}) {
+  const convo = [{ role: 'system', content: systemPrompt }, ...messages];
+  if (reminder) convo.push({ role: 'system', content: reminder });
+  const useTools = searchEnabled();
+
+  const call = (withTools) =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        ...extraHeaders,
+      },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 4096,
+        messages: convo,
+        ...(withTools ? { tools: OPENAI_TOOLS, tool_choice: 'auto' } : {}),
+      }),
+    });
+
+  const first = await call(useTools);
+  if (!first.ok) return { failure: await describeFailure(first) };
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        let upstream = first;
+        for (let round = 0; ; round++) {
+          const { text, toolCalls } = await consumeOpenAiStream(upstream.body, (t) =>
+            controller.enqueue(encoder.encode(t))
+          );
+          if (toolCalls.length === 0) break;
+          convo.push({ role: 'assistant', content: text || null, tool_calls: toolCalls });
+          for (let i = 0; i < toolCalls.length; i++) {
+            const tc = toolCalls[i];
+            let args = {};
+            try {
+              args = JSON.parse(tc.function.arguments || '{}');
+            } catch {
+              // leave args empty; runTool reports the missing query
             }
-          } catch {
-            // incomplete JSON fragment; ignore
+            const result = await runTool(tc.function.name, args);
+            convo.push({ role: 'tool', tool_call_id: tc.id || `call_${i}`, content: result });
           }
+          // On the last allowed round, resend without tools so the model
+          // must produce a final text answer instead of searching again.
+          upstream = await call(useTools && round < MAX_TOOL_ROUNDS - 1);
+          if (!upstream.ok) throw new Error(`provider returned ${await describeFailure(upstream)}`);
         }
-      },
-    })
-  );
-}
-
-function callOpenAiCompatible(url, apiKey, model, messages, systemPrompt, extraHeaders = {}) {
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
+      } catch (err) {
+        // Text may already be flowing, so surface the error in-stream.
+        controller.enqueue(encoder.encode(`\n\n[error: ${err.message}]`));
+      }
+      controller.close();
     },
-    body: JSON.stringify({
-      model,
-      stream: true,
-      temperature: 0.7,
-      max_tokens: 4096,
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
-    }),
   });
+  return { stream };
 }
 
-function callGemini(apiKey, model, messages, systemPrompt) {
+async function geminiAgentResponse(apiKey, model, messages, systemPrompt, reminder) {
+  // Gemini has no system role in `contents`, so the per-request language
+  // reminder is appended to the system instruction instead.
+  const instruction = reminder ? `${systemPrompt}\n\n${reminder}` : systemPrompt;
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  const useTools = searchEnabled();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
+
+  const call = (withTools) =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: instruction }] },
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+        ...(withTools ? { tools: GEMINI_TOOLS } : {}),
+      }),
+    });
+
+  const first = await call(useTools);
+  if (!first.ok) return { failure: await describeFailure(first) };
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        let upstream = first;
+        for (let round = 0; ; round++) {
+          const { text, calls } = await consumeGeminiStream(upstream.body, (t) =>
+            controller.enqueue(encoder.encode(t))
+          );
+          if (calls.length === 0) break;
+          contents.push({
+            role: 'model',
+            parts: [
+              ...(text ? [{ text }] : []),
+              ...calls.map((c) => ({ functionCall: { name: c.name, args: c.args } })),
+            ],
+          });
+          const responses = [];
+          for (const c of calls) {
+            const result = await runTool(c.name, c.args);
+            responses.push({
+              functionResponse: { name: c.name, response: { content: result } },
+            });
+          }
+          contents.push({ role: 'user', parts: responses });
+          upstream = await call(useTools && round < MAX_TOOL_ROUNDS - 1);
+          if (!upstream.ok) throw new Error(`provider returned ${await describeFailure(upstream)}`);
+        }
+      } catch (err) {
+        controller.enqueue(encoder.encode(`\n\n[error: ${err.message}]`));
+      }
+      controller.close();
     },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: messages.map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-    }),
   });
+  return { stream };
 }
 
-function callProvider(name, messages, req) {
+function startProvider(name, messages, req) {
   const apiKey = PROVIDERS[name].key();
   const model = PROVIDERS[name].model();
   const systemPrompt = buildSystemPrompt(name);
+  const reminder = languageReminder(messages);
   if (name === 'groq') {
-    return callOpenAiCompatible(
+    return openAiAgentResponse(
       'https://api.groq.com/openai/v1/chat/completions',
       apiKey,
       model,
       messages,
-      systemPrompt
+      systemPrompt,
+      reminder
     );
   }
   if (name === 'openrouter') {
-    return callOpenAiCompatible(
+    return openAiAgentResponse(
       'https://openrouter.ai/api/v1/chat/completions',
       apiKey,
       model,
       messages,
       systemPrompt,
+      reminder,
       {
         'HTTP-Referer': req.headers.get('origin') || 'https://wlybot.vercel.app',
         'X-Title': 'Wlybot',
       }
     );
   }
-  return callGemini(apiKey, model, messages, systemPrompt);
+  return geminiAgentResponse(apiKey, model, messages, systemPrompt, reminder);
 }
 
 export default async function handler(req) {
@@ -279,29 +544,20 @@ export default async function handler(req) {
 
   const failures = [];
   for (const provider of candidates) {
-    let upstream;
+    let result;
     try {
-      upstream = await callProvider(provider, messages, req);
+      result = await startProvider(provider, messages, req);
     } catch (err) {
       failures.push(`${provider}: ${err.message}`);
       continue;
     }
 
-    if (!upstream.ok) {
-      let detail = '';
-      try {
-        detail = (await upstream.text()).slice(0, 300);
-      } catch {
-        // ignore
-      }
-      failures.push(`${provider}: HTTP ${upstream.status} ${detail}`.trim());
+    if (result.failure) {
+      failures.push(`${provider}: ${result.failure}`);
       continue;
     }
 
-    const textStream =
-      provider === 'gemini' ? geminiSseToText(upstream.body) : openAiSseToText(upstream.body);
-
-    return new Response(textStream, {
+    return new Response(result.stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
