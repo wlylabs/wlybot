@@ -21,40 +21,25 @@ const PROVIDERS = {
     key: () => process.env.GROQ_API_KEY,
     model: () => process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
   },
+  gemini: {
+    key: () => process.env.GEMINI_API_KEY,
+    model: () => process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  },
   openrouter: {
     key: () => process.env.OPENROUTER_API_KEY,
     model: () => process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
   },
-  gemini: {
-    key: () => process.env.GEMINI_API_KEY,
-    model: () => process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-  },
 };
 
-// Urutan fallback kalau client tidak memilih provider.
-const AUTO_ORDER = ['groq', 'gemini', 'openrouter'];
+// Groq utama; Gemini lalu OpenRouter sebagai fallback otomatis
+// kalau provider sebelumnya gagal (rate limit, key invalid, gangguan layanan).
+const FALLBACK_ORDER = ['groq', 'gemini', 'openrouter'];
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-function pickProvider(requested) {
-  if (requested && requested !== 'auto') {
-    const p = PROVIDERS[requested];
-    if (!p) return { error: `Provider tidak dikenal: ${requested}` };
-    if (!p.key()) return { error: `API key untuk ${requested} belum diset di environment variable Vercel.` };
-    return { name: requested };
-  }
-  for (const name of AUTO_ORDER) {
-    if (PROVIDERS[name].key()) return { name };
-  }
-  return {
-    error:
-      'Tidak ada API key yang terpasang. Set minimal satu dari GROQ_API_KEY, GEMINI_API_KEY, atau OPENROUTER_API_KEY di Vercel (Settings > Environment Variables).',
-  };
 }
 
 function sanitizeMessages(messages) {
@@ -129,7 +114,7 @@ function geminiSseToText(upstreamBody) {
   );
 }
 
-async function callOpenAiCompatible(url, apiKey, model, messages, extraHeaders = {}) {
+function callOpenAiCompatible(url, apiKey, model, messages, extraHeaders = {}) {
   return fetch(url, {
     method: 'POST',
     headers: {
@@ -147,7 +132,7 @@ async function callOpenAiCompatible(url, apiKey, model, messages, extraHeaders =
   });
 }
 
-async function callGemini(apiKey, model, messages) {
+function callGemini(apiKey, model, messages) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   return fetch(url, {
     method: 'POST',
@@ -164,6 +149,32 @@ async function callGemini(apiKey, model, messages) {
       generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
     }),
   });
+}
+
+function callProvider(name, messages, req) {
+  const apiKey = PROVIDERS[name].key();
+  const model = PROVIDERS[name].model();
+  if (name === 'groq') {
+    return callOpenAiCompatible(
+      'https://api.groq.com/openai/v1/chat/completions',
+      apiKey,
+      model,
+      messages
+    );
+  }
+  if (name === 'openrouter') {
+    return callOpenAiCompatible(
+      'https://openrouter.ai/api/v1/chat/completions',
+      apiKey,
+      model,
+      messages,
+      {
+        'HTTP-Referer': req.headers.get('origin') || 'https://wlybot.vercel.app',
+        'X-Title': 'Wlybot',
+      }
+    );
+  }
+  return callGemini(apiKey, model, messages);
 }
 
 export default async function handler(req) {
@@ -183,62 +194,70 @@ export default async function handler(req) {
     return jsonResponse({ error: 'Field "messages" wajib berisi minimal satu pesan.' }, 400);
   }
 
-  const picked = pickProvider(body.provider);
-  if (picked.error) return jsonResponse({ error: picked.error }, 400);
-
-  const provider = picked.name;
-  const apiKey = PROVIDERS[provider].key();
-  const model = PROVIDERS[provider].model();
-
-  let upstream;
-  try {
-    if (provider === 'groq') {
-      upstream = await callOpenAiCompatible(
-        'https://api.groq.com/openai/v1/chat/completions',
-        apiKey,
-        model,
-        messages
+  // Tentukan kandidat provider. Mode otomatis mencoba berurutan
+  // (Groq -> Gemini -> OpenRouter); pilihan manual hanya mencoba satu.
+  const requested = body.provider;
+  let candidates;
+  if (requested && requested !== 'auto') {
+    if (!PROVIDERS[requested]) {
+      return jsonResponse({ error: `Provider tidak dikenal: ${requested}` }, 400);
+    }
+    if (!PROVIDERS[requested].key()) {
+      return jsonResponse(
+        { error: `API key untuk ${requested} belum diset di environment variable Vercel.` },
+        400
       );
-    } else if (provider === 'openrouter') {
-      upstream = await callOpenAiCompatible(
-        'https://openrouter.ai/api/v1/chat/completions',
-        apiKey,
-        model,
-        messages,
+    }
+    candidates = [requested];
+  } else {
+    candidates = FALLBACK_ORDER.filter((name) => PROVIDERS[name].key());
+    if (candidates.length === 0) {
+      return jsonResponse(
         {
-          'HTTP-Referer': req.headers.get('origin') || 'https://wlybot.vercel.app',
-          'X-Title': 'Wlybot',
-        }
+          error:
+            'Tidak ada API key yang terpasang. Set minimal satu dari GROQ_API_KEY, GEMINI_API_KEY, atau OPENROUTER_API_KEY di Vercel (Settings > Environment Variables).',
+        },
+        400
       );
-    } else {
-      upstream = await callGemini(apiKey, model, messages);
     }
-  } catch (err) {
-    return jsonResponse({ error: `Gagal menghubungi ${provider}: ${err.message}` }, 502);
   }
 
-  if (!upstream.ok) {
-    let detail = '';
+  const failures = [];
+  for (const provider of candidates) {
+    let upstream;
     try {
-      detail = (await upstream.text()).slice(0, 500);
-    } catch {
-      // abaikan
+      upstream = await callProvider(provider, messages, req);
+    } catch (err) {
+      failures.push(`${provider}: ${err.message}`);
+      continue;
     }
-    return jsonResponse(
-      { error: `${provider} mengembalikan status ${upstream.status}. ${detail}` },
-      502
-    );
+
+    if (!upstream.ok) {
+      let detail = '';
+      try {
+        detail = (await upstream.text()).slice(0, 300);
+      } catch {
+        // abaikan
+      }
+      failures.push(`${provider}: HTTP ${upstream.status} ${detail}`.trim());
+      continue;
+    }
+
+    const textStream =
+      provider === 'gemini' ? geminiSseToText(upstream.body) : openAiSseToText(upstream.body);
+
+    return new Response(textStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Provider': provider,
+        'X-Model': PROVIDERS[provider].model(),
+      },
+    });
   }
 
-  const textStream =
-    provider === 'gemini' ? geminiSseToText(upstream.body) : openAiSseToText(upstream.body);
-
-  return new Response(textStream, {
-    headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      'X-Provider': provider,
-      'X-Model': model,
-    },
-  });
+  return jsonResponse(
+    { error: `Semua provider gagal. Detail: ${failures.join(' | ')}` },
+    502
+  );
 }

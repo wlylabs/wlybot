@@ -4,9 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0f1117">
-<meta name="description" content="Wlybot - asisten AI cepat dan pintar">
+<meta name="description" content="Wlybot - asisten AI cepat, mobile-first, dengan fallback multi-provider">
 <title>Wlybot</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236c7bff'/%3E%3Cpath d='M9 11c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3h-0a2 2 0 0 1-2-2v-7z' fill='white'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <style>
   :root {
     --bg: #0f1117;
@@ -55,13 +57,10 @@
   }
   .logo {
     width: 34px; height: 34px;
-    border-radius: 10px;
-    background: var(--accent);
-    display: grid;
-    place-items: center;
+    border-radius: 9px;
     flex-shrink: 0;
+    display: block;
   }
-  .logo svg { width: 20px; height: 20px; }
   .title-wrap { flex: 1; min-width: 0; }
   .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
   .subtitle { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -97,8 +96,7 @@
     padding: 24px;
     color: var(--text-dim);
   }
-  .empty-state .logo { width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 16px; }
-  .empty-state .logo svg { width: 32px; height: 32px; }
+  .empty-state .logo { width: 56px; height: 56px; border-radius: 15px; margin: 0 auto 16px; }
   .empty-state h2 { color: var(--text); font-size: 20px; margin-bottom: 6px; }
   .empty-state p { font-size: 14px; line-height: 1.5; max-width: 340px; margin: 0 auto 20px; }
   .suggestions { display: flex; flex-direction: column; gap: 8px; max-width: 340px; margin: 0 auto; }
@@ -145,6 +143,13 @@
     color: var(--danger);
     font-size: 13px;
     max-width: 95%;
+  }
+  .msg-meta {
+    align-self: flex-start;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: -8px 0 0 6px;
+    letter-spacing: .2px;
   }
 
   /* Markdown di dalam bubble bot */
@@ -240,6 +245,10 @@
   #send:active { background: var(--accent-press); }
   #send:disabled { opacity: .4; cursor: default; }
   #send svg { width: 18px; height: 18px; }
+  #send .icon-stop { display: none; }
+  #send.busy { background: var(--surface-2); }
+  #send.busy .icon-send { display: none; }
+  #send.busy .icon-stop { display: block; }
 
   /* Bottom sheet pengaturan */
   #sheet-backdrop {
@@ -315,11 +324,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>
-      </svg>
-    </div>
+    <img class="logo" src="/favicon.svg" alt="Logo Wlybot">
     <div class="title-wrap">
       <div class="title">Wlybot</div>
       <div class="subtitle" id="status">Siap membantu</div>
@@ -339,8 +344,11 @@
       <textarea id="input" rows="1" placeholder="Tulis pesan" autocomplete="off"></textarea>
     </div>
     <button id="send" aria-label="Kirim" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+      </svg>
+      <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2.5"/>
       </svg>
     </button>
   </div>
@@ -350,7 +358,7 @@
 <div id="sheet" role="dialog" aria-label="Pengaturan">
   <div class="sheet-handle"></div>
   <h3>Model AI</h3>
-  <p class="hint">API key dikonfigurasi di server (environment variable Vercel), bukan di perangkat ini. Provider tanpa key akan gagal dipakai.</p>
+  <p class="hint">API key dikonfigurasi di server (environment variable Vercel), bukan di perangkat ini. Mode otomatis memakai Groq sebagai utama dan berpindah sendiri ke Gemini lalu OpenRouter jika gagal.</p>
   <div id="provider-list"></div>
   <button class="sheet-danger" id="clear-btn">Hapus riwayat percakapan</button>
 </div>
@@ -363,18 +371,19 @@
   var inputEl = document.getElementById('input');
   var sendBtn = document.getElementById('send');
   var statusEl = document.getElementById('status');
-  var sheetEl = document.getElementById('sheet');
   var backdropEl = document.getElementById('sheet-backdrop');
 
   var STORAGE_MSGS = 'wlybot.messages';
   var STORAGE_PROVIDER = 'wlybot.provider';
 
   var PROVIDER_LABELS = [
-    { id: 'auto', name: 'Otomatis', desc: 'Pakai provider pertama yang tersedia' },
-    { id: 'groq', name: 'Groq', desc: 'Llama via Groq, sangat cepat' },
-    { id: 'gemini', name: 'Gemini', desc: 'Google Gemini Flash' },
-    { id: 'openrouter', name: 'OpenRouter', desc: 'Berbagai model open source' }
+    { id: 'auto', name: 'Otomatis (disarankan)', desc: 'Groq utama; fallback ke Gemini lalu OpenRouter' },
+    { id: 'groq', name: 'Groq', desc: 'Llama 3.3 70B, respons sangat cepat' },
+    { id: 'gemini', name: 'Gemini', desc: 'Google Gemini 2.5 Flash' },
+    { id: 'openrouter', name: 'OpenRouter', desc: 'Llama 3.3 70B (free tier)' }
   ];
+
+  var PROVIDER_NAMES = { groq: 'Groq', gemini: 'Gemini', openrouter: 'OpenRouter' };
 
   var messages = [];
   var busy = false;
@@ -482,10 +491,18 @@
     return el;
   }
 
+  function addMeta(text) {
+    var el = document.createElement('div');
+    el.className = 'msg-meta';
+    el.textContent = text;
+    chatEl.appendChild(el);
+    return el;
+  }
+
   function showEmptyState() {
     chatEl.innerHTML =
       '<div class="empty-state">' +
-        '<div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg></div>' +
+        '<img class="logo" src="/favicon.svg" alt="">' +
         '<h2>Halo, saya Wlybot</h2>' +
         '<p>Asisten AI yang cepat dan to the point. Tanyakan apa saja.</p>' +
         '<div class="suggestions">' +
@@ -509,6 +526,7 @@
     if (messages.length === 0) { showEmptyState(); return; }
     for (var i = 0; i < messages.length; i++) {
       addBubble(messages[i].role === 'user' ? 'user' : 'bot', messages[i].content);
+      if (messages[i].meta) addMeta(messages[i].meta);
     }
   }
 
@@ -516,11 +534,21 @@
   function setBusy(v) {
     busy = v;
     statusEl.textContent = v ? 'Sedang mengetik' : 'Siap membantu';
+    sendBtn.classList.toggle('busy', v);
+    sendBtn.setAttribute('aria-label', v ? 'Hentikan' : 'Kirim');
     updateSendState();
   }
 
   function updateSendState() {
-    sendBtn.disabled = busy || inputEl.value.trim() === '';
+    // Saat busy tombol tetap aktif agar bisa menghentikan streaming.
+    sendBtn.disabled = !busy && inputEl.value.trim() === '';
+  }
+
+  function providerMeta(res) {
+    var p = res.headers.get('X-Provider');
+    var m = res.headers.get('X-Model');
+    if (!p) return '';
+    return (PROVIDER_NAMES[p] || p) + (m ? ' · ' + m : '');
   }
 
   function sendMessage() {
@@ -544,6 +572,7 @@
 
     abortCtrl = new AbortController();
     var acc = '';
+    var meta = '';
 
     fetch('/api/chat', {
       method: 'POST',
@@ -558,11 +587,15 @@
           throw new Error('Terjadi kesalahan (' + res.status + ')');
         });
       }
+      meta = providerMeta(res);
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
       function pump() {
         return reader.read().then(function (r) {
-          if (r.done) return;
+          if (r.done) {
+            acc += decoder.decode();
+            return;
+          }
           acc += decoder.decode(r.value, { stream: true });
           botEl.innerHTML = renderMarkdown(acc);
           scrollToBottom();
@@ -575,8 +608,7 @@
     }).catch(function (err) {
       if (err.name === 'AbortError') { finish(); return; }
       botEl.remove();
-      var e = addBubble('error', err.message);
-      e.classList.add('error');
+      addBubble('error', err.message);
       setBusy(false);
     });
 
@@ -585,9 +617,10 @@
         botEl.remove();
         addBubble('error', 'Tidak ada respons dari model. Coba lagi atau ganti provider di pengaturan.');
       } else {
-        messages.push({ role: 'assistant', content: acc });
+        messages.push({ role: 'assistant', content: acc, meta: meta });
         save();
         botEl.innerHTML = renderMarkdown(acc);
+        if (meta) addMeta(meta);
       }
       setBusy(false);
       scrollToBottom();
@@ -607,7 +640,13 @@
       sendMessage();
     }
   });
-  sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', function () {
+    if (busy) {
+      if (abortCtrl) abortCtrl.abort();
+    } else {
+      sendMessage();
+    }
+  });
 
   /* ---------- Bottom sheet ---------- */
   function renderProviders() {
