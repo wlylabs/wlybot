@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f1117">
+<meta name="theme-color" content="#0a0a0a">
 <meta name="description" content="Wlybot - a fast, mobile-first AI assistant with multi-provider fallback">
 <title>Wlybot</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -11,17 +11,18 @@
 <link rel="manifest" href="/site.webmanifest">
 <style>
   :root {
-    --bg: #0f1117;
-    --surface: #171a23;
-    --surface-2: #1e2230;
-    --border: #2a2f40;
-    --text: #e8eaf2;
-    --text-dim: #9aa0b4;
-    --accent: #6c7bff;
-    --accent-press: #5563e8;
-    --user-bubble: #2d3550;
-    --danger: #ff6b6b;
-    --radius: 18px;
+    --bg: #0a0a0a;
+    --surface: #101010;
+    --surface-2: #1a1a1a;
+    --border: #262626;
+    --text: #e6e6e6;
+    --text-dim: #8b8b8b;
+    --accent: #c8ff00;
+    --accent-press: #a9d800;
+    --accent-dim: rgba(200, 255, 0, .35);
+    --danger: #ff5c5c;
+    --radius: 4px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --sat: env(safe-area-inset-top, 0px);
     --sab: env(safe-area-inset-bottom, 0px);
   }
@@ -30,9 +31,16 @@
     height: 100%;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--mono);
     -webkit-text-size-adjust: 100%;
   }
+  ::selection { background: var(--accent); color: #000; }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-thumb { background: var(--border); }
   #app {
     display: flex;
     flex-direction: column;
@@ -45,9 +53,9 @@
   header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: calc(10px + var(--sat)) 14px 10px;
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    gap: 12px;
+    padding: calc(12px + var(--sat)) 16px 12px;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
@@ -55,39 +63,51 @@
     top: 0;
     z-index: 10;
   }
-  .logo {
-    width: 34px; height: 34px;
-    border-radius: 9px;
-    flex-shrink: 0;
-    display: block;
-  }
   .title-wrap { flex: 1; min-width: 0; }
-  .title { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
-  .subtitle { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wordmark {
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: .18em;
+    color: var(--text);
+  }
+  .wordmark .o {
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-dim);
+  }
+  .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .subtitle::before { content: "// "; color: var(--accent); }
   .icon-btn {
     width: 40px; height: 40px;
-    border: none;
-    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--text-dim);
     display: grid;
     place-items: center;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background .15s;
+    transition: background .15s, color .15s, border-color .15s;
   }
-  .icon-btn:active { background: var(--surface-2); }
-  .icon-btn svg { width: 21px; height: 21px; }
+  .icon-btn:active { background: var(--surface-2); color: var(--accent); border-color: var(--accent-dim); }
+  .icon-btn svg { width: 19px; height: 19px; }
 
   /* Chat area */
   #chat {
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 16px 14px 8px;
+    padding: 18px 14px 8px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
     scroll-behavior: smooth;
   }
   .empty-state {
@@ -96,97 +116,142 @@
     padding: 24px;
     color: var(--text-dim);
   }
-  .empty-state .logo { width: 56px; height: 56px; border-radius: 15px; margin: 0 auto 16px; }
-  .empty-state h2 { color: var(--text); font-size: 20px; margin-bottom: 6px; }
-  .empty-state p { font-size: 14px; line-height: 1.5; max-width: 340px; margin: 0 auto 20px; }
-  .suggestions { display: flex; flex-direction: column; gap: 8px; max-width: 340px; margin: 0 auto; }
+  .brand-mark {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: .14em;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+  .brand-mark .o {
+    color: var(--accent);
+    text-shadow: 0 0 18px var(--accent-dim), 0 0 42px var(--accent-dim);
+  }
+  .empty-state h2 {
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: .02em;
+  }
+  .empty-state h2 .hl { color: var(--accent); }
+  .empty-state p {
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 360px;
+    margin: 0 auto 22px;
+  }
+  .suggestions { display: flex; flex-direction: column; gap: 8px; max-width: 360px; margin: 0 auto 24px; }
   .suggestion {
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
-    border-radius: 14px;
+    border-radius: var(--radius);
     padding: 12px 14px;
-    font-size: 14px;
+    font-size: 12.5px;
+    font-family: inherit;
     text-align: left;
     cursor: pointer;
-    transition: background .15s;
+    transition: background .15s, border-color .15s;
   }
-  .suggestion:active { background: var(--surface-2); }
+  .suggestion::before { content: "> "; color: var(--accent); }
+  .suggestion:active { background: var(--surface-2); border-color: var(--accent-dim); }
+  .empty-feats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 18px;
+    font-size: 11px;
+    letter-spacing: .04em;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+  .empty-feats span::before { content: "\2713\00a0"; color: var(--accent); }
 
   .msg {
     max-width: 88%;
-    padding: 11px 15px;
+    padding: 12px 14px;
     border-radius: var(--radius);
-    font-size: 15px;
-    line-height: 1.55;
+    font-size: 13.5px;
+    line-height: 1.65;
     word-wrap: break-word;
     overflow-wrap: break-word;
     animation: pop .18s ease-out;
   }
   @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg::before {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    margin-bottom: 6px;
+  }
   .msg.user {
     align-self: flex-end;
-    background: var(--user-bubble);
-    border-bottom-right-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--bg));
     white-space: pre-wrap;
   }
+  .msg.user::before { content: "YOU"; color: var(--text-dim); text-align: right; }
   .msg.bot {
     align-self: flex-start;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-bottom-left-radius: 6px;
   }
+  .msg.bot::before { content: "WLYBOT"; color: var(--accent); }
   .msg.error {
     align-self: center;
-    background: color-mix(in srgb, var(--danger) 12%, var(--bg));
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    background: color-mix(in srgb, var(--danger) 8%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
     color: var(--danger);
-    font-size: 13px;
+    font-size: 12px;
     max-width: 95%;
   }
+  .msg.error::before { content: "ERROR"; color: var(--danger); }
   /* Markdown inside bot bubbles */
   .msg.bot p { margin: 0 0 10px; }
   .msg.bot p:last-child { margin-bottom: 0; }
   .msg.bot ul, .msg.bot ol { margin: 0 0 10px 20px; }
   .msg.bot li { margin-bottom: 4px; }
-  .msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 15.5px; margin: 12px 0 6px; }
+  .msg.bot li::marker { color: var(--accent); }
+  .msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 14px; margin: 12px 0 6px; letter-spacing: .02em; }
+  .msg.bot h1::before, .msg.bot h2::before, .msg.bot h3::before { content: "# "; color: var(--accent); }
   .msg.bot code {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 1px 6px;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--accent);
   }
   .msg.bot pre {
-    background: #0c0e14;
+    background: #000;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 12px;
     overflow-x: auto;
     margin: 0 0 10px;
     -webkit-overflow-scrolling: touch;
   }
-  .msg.bot pre code { background: none; border: none; padding: 0; font-size: 13px; line-height: 1.5; }
-  .msg.bot a { color: var(--accent); }
+  .msg.bot pre code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+  .msg.bot a { color: var(--accent); text-underline-offset: 3px; }
   .msg.bot blockquote {
-    border-left: 3px solid var(--border);
+    border-left: 2px solid var(--accent-dim);
     padding-left: 12px;
     color: var(--text-dim);
     margin: 0 0 10px;
   }
 
-  /* Typing indicator */
-  .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
-  .typing span {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    animation: blink 1.2s infinite;
+  /* Typing indicator: blinking block cursor */
+  .cursor-blink {
+    display: inline-block;
+    width: 9px; height: 16px;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: cursor 1s steps(1) infinite;
   }
-  .typing span:nth-child(2) { animation-delay: .2s; }
-  .typing span:nth-child(3) { animation-delay: .4s; }
-  @keyframes blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+  @keyframes cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
   /* Composer */
   #composer {
@@ -203,11 +268,18 @@
     align-items: flex-end;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 22px;
-    padding: 6px 6px 6px 16px;
+    border-radius: var(--radius);
+    padding: 6px 6px 6px 12px;
     transition: border-color .15s;
   }
   #input-wrap:focus-within { border-color: var(--accent); }
+  #input-wrap .prompt {
+    color: var(--accent);
+    font-size: 15px;
+    line-height: 1.45;
+    padding: 6px 8px 6px 0;
+    user-select: none;
+  }
   #input {
     flex: 1;
     border: none;
@@ -220,14 +292,15 @@
     outline: none;
     max-height: 120px;
     padding: 6px 0;
+    caret-color: var(--accent);
   }
   #input::placeholder { color: var(--text-dim); }
   #send {
-    width: 38px; height: 38px;
+    width: 40px; height: 40px;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--radius);
     background: var(--accent);
-    color: #fff;
+    color: #000;
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -235,10 +308,10 @@
     transition: background .15s, opacity .15s;
   }
   #send:active { background: var(--accent-press); }
-  #send:disabled { opacity: .4; cursor: default; }
+  #send:disabled { opacity: .35; cursor: default; }
   #send svg { width: 18px; height: 18px; }
   #send .icon-stop { display: none; }
-  #send.busy { background: var(--surface-2); }
+  #send.busy { background: var(--surface-2); color: var(--accent); border: 1px solid var(--border); }
   #send.busy .icon-send { display: none; }
   #send.busy .icon-stop { display: block; }
 
@@ -246,7 +319,7 @@
   #sheet-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.5);
+    background: rgba(0,0,0,.6);
     z-index: 20;
     opacity: 0;
     pointer-events: none;
@@ -258,9 +331,9 @@
     max-width: 760px;
     margin: 0 auto;
     background: var(--surface);
-    border-radius: 20px 20px 0 0;
     border: 1px solid var(--border);
     border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
     padding: 8px 18px calc(24px + var(--sab));
     z-index: 21;
     transform: translateY(105%);
@@ -269,13 +342,19 @@
   body.sheet-open #sheet { transform: none; }
   body.sheet-open #sheet-backdrop { opacity: 1; pointer-events: auto; }
   .sheet-handle {
-    width: 40px; height: 4px;
-    border-radius: 2px;
+    width: 40px; height: 3px;
     background: var(--border);
-    margin: 6px auto 16px;
+    margin: 8px auto 18px;
   }
-  #sheet h3 { font-size: 16px; margin-bottom: 4px; }
-  #sheet .hint { font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px; line-height: 1.5; }
+  #sheet h3 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  #sheet h3::before { content: "// "; color: var(--accent); }
+  #sheet .hint { font-size: 11.5px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.6; }
   .provider-option {
     display: flex;
     align-items: center;
@@ -283,32 +362,39 @@
     width: 100%;
     padding: 13px 14px;
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: var(--radius);
     background: var(--bg);
     color: var(--text);
-    font-size: 15px;
+    font-size: 13px;
+    font-family: inherit;
     cursor: pointer;
     margin-bottom: 8px;
     text-align: left;
+    transition: border-color .15s;
   }
   .provider-option .radio {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    border: 2px solid var(--text-dim);
+    width: 14px; height: 14px;
+    border: 1px solid var(--text-dim);
     flex-shrink: 0;
   }
   .provider-option.selected { border-color: var(--accent); }
-  .provider-option.selected .radio { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 45%, transparent 50%); }
-  .provider-option small { display: block; color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .provider-option.selected .radio {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: inset 0 0 0 2px var(--bg);
+  }
+  .provider-option small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 3px; }
   .sheet-danger {
     width: 100%;
     margin-top: 8px;
     padding: 13px;
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--danger);
-    font-size: 15px;
+    font-size: 13px;
+    font-family: inherit;
+    letter-spacing: .04em;
     cursor: pointer;
   }
 </style>
@@ -316,9 +402,8 @@
 <body>
 <div id="app">
   <header>
-    <img class="logo" src="/favicon.svg" alt="Wlybot logo">
     <div class="title-wrap">
-      <div class="title">Wlybot</div>
+      <div class="wordmark">WLYB<span class="o">0</span>T</div>
       <div class="subtitle" id="status">Ready to help</div>
     </div>
     <button class="icon-btn" id="settings-btn" aria-label="Settings">
@@ -333,14 +418,15 @@
 
   <div id="composer">
     <div id="input-wrap">
-      <textarea id="input" rows="1" placeholder="Type a message" autocomplete="off"></textarea>
+      <span class="prompt">$</span>
+      <textarea id="input" rows="1" placeholder="type a message" autocomplete="off"></textarea>
     </div>
     <button id="send" aria-label="Send" disabled>
       <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
       </svg>
       <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor">
-        <rect x="6" y="6" width="12" height="12" rx="2.5"/>
+        <rect x="6" y="6" width="12" height="12" rx="1"/>
       </svg>
     </button>
   </div>
@@ -484,13 +570,18 @@
   function showEmptyState() {
     chatEl.innerHTML =
       '<div class="empty-state">' +
-        '<img class="logo" src="/favicon.svg" alt="">' +
-        '<h2>Hi, I\'m Wlybot</h2>' +
-        '<p>A fast, to-the-point AI assistant. Ask me anything.</p>' +
+        '<div class="brand-mark">WLYB<span class="o">0</span>T</div>' +
+        '<h2>An AI assistant <span class="hl">you own</span>.</h2>' +
+        '<p>Any model. Every question. Zero friction.</p>' +
         '<div class="suggestions">' +
           '<button class="suggestion">Explain how an API works in simple terms</button>' +
           '<button class="suggestion">Write an Instagram caption for a coffee brand</button>' +
           '<button class="suggestion">Write a JavaScript function to validate an email</button>' +
+        '</div>' +
+        '<div class="empty-feats">' +
+          '<span>multi-provider</span>' +
+          '<span>streaming</span>' +
+          '<span>no tracking</span>' +
         '</div>' +
       '</div>';
     var btns = chatEl.querySelectorAll('.suggestion');
@@ -514,7 +605,7 @@
   /* ---------- Send & streaming ---------- */
   function setBusy(v) {
     busy = v;
-    statusEl.textContent = v ? 'Typing' : 'Ready to help';
+    statusEl.textContent = v ? 'streaming_' : 'ready';
     sendBtn.classList.toggle('busy', v);
     sendBtn.setAttribute('aria-label', v ? 'Stop' : 'Send');
     updateSendState();
@@ -540,7 +631,7 @@
 
     var botEl = document.createElement('div');
     botEl.className = 'msg bot';
-    botEl.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    botEl.innerHTML = '<span class="cursor-blink"></span>';
     chatEl.appendChild(botEl);
     scrollToBottom();
 
@@ -652,6 +743,9 @@
   /* ---------- Init ---------- */
   renderAll();
   scrollToBottom();
+
+  // Initial status in terminal style
+  statusEl.textContent = 'ready';
 })();
 </script>
 </body>
