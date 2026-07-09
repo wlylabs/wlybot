@@ -53,6 +53,45 @@ const PROVIDER_NOTES = {
   gemini: '',
 };
 
+// Lightweight Indonesian/English detection for the user's latest message.
+// The models are told to mirror the user's language, but smaller models
+// drift, so we also detect it server-side and inject an explicit
+// per-request instruction. Returns 'id', 'en', or null when unsure.
+const ID_WORDS = new Set(
+  'yang tidak gak ga nggak enggak apa apakah gimana bagaimana kenapa mengapa kapan dimana siapa aku kamu saya anda gua gue lu lo kita kami mereka dia ini itu bisa boleh dengan untuk dari kalau kalo aja saja banget sih dong deh nih kok ya iya bukan ada dan atau juga lagi biar gitu gini kayak seperti sama jadi pakai pake mau udah sudah belum sedang akan tolong terima kasih makasih selamat halo hai coba buat bikin cara caranya berapa hitung jelaskan contoh misalnya'.split(
+    ' '
+  )
+);
+const EN_WORDS = new Set(
+  'the is are was were be been am what how why when where which who whom can could would should shall will do does did done have has had i you we they he she it this that these those my your our their me him her us them a an of to in on at for with and or not but if then than so because please thanks thank hello hi hey want need make write explain help tell give show'.split(
+    ' '
+  )
+);
+
+function detectLanguage(text) {
+  // Strip code blocks and inline code so English keywords in code
+  // don't skew detection of the surrounding prose.
+  const prose = text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  const words = prose.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  let id = 0;
+  let en = 0;
+  for (const w of words) {
+    if (ID_WORDS.has(w)) id++;
+    if (EN_WORDS.has(w)) en++;
+  }
+  if (id === en) return null;
+  return id > en ? 'id' : 'en';
+}
+
+function languageReminder(messages) {
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+  if (!lastUser) return '';
+  const lang = detectLanguage(lastUser.content);
+  if (!lang) return '';
+  const name = lang === 'en' ? 'English' : 'Indonesian';
+  return `IMPORTANT: The user's most recent message is written in ${name}. Write your ENTIRE reply in ${name}, regardless of the language used earlier in the conversation.`;
+}
+
 function buildSystemPrompt(provider) {
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -166,7 +205,20 @@ function geminiSseToText(upstreamBody) {
   );
 }
 
-function callOpenAiCompatible(url, apiKey, model, messages, systemPrompt, extraHeaders = {}) {
+function callOpenAiCompatible(
+  url,
+  apiKey,
+  model,
+  messages,
+  systemPrompt,
+  reminder,
+  extraHeaders = {}
+) {
+  // The reminder goes in as a trailing system message: instructions at the
+  // very end of the context are followed far more reliably than ones
+  // buried at the top, especially by Llama-family models.
+  const finalMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+  if (reminder) finalMessages.push({ role: 'system', content: reminder });
   return fetch(url, {
     method: 'POST',
     headers: {
@@ -179,12 +231,15 @@ function callOpenAiCompatible(url, apiKey, model, messages, systemPrompt, extraH
       stream: true,
       temperature: 0.7,
       max_tokens: 4096,
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      messages: finalMessages,
     }),
   });
 }
 
-function callGemini(apiKey, model, messages, systemPrompt) {
+function callGemini(apiKey, model, messages, systemPrompt, reminder) {
+  // Gemini has no system role in `contents`, so the per-request language
+  // reminder is appended to the system instruction instead.
+  const instruction = reminder ? `${systemPrompt}\n\n${reminder}` : systemPrompt;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   return fetch(url, {
     method: 'POST',
@@ -193,7 +248,7 @@ function callGemini(apiKey, model, messages, systemPrompt) {
       'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
+      systemInstruction: { parts: [{ text: instruction }] },
       contents: messages.map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
@@ -207,13 +262,15 @@ function callProvider(name, messages, req) {
   const apiKey = PROVIDERS[name].key();
   const model = PROVIDERS[name].model();
   const systemPrompt = buildSystemPrompt(name);
+  const reminder = languageReminder(messages);
   if (name === 'groq') {
     return callOpenAiCompatible(
       'https://api.groq.com/openai/v1/chat/completions',
       apiKey,
       model,
       messages,
-      systemPrompt
+      systemPrompt,
+      reminder
     );
   }
   if (name === 'openrouter') {
@@ -223,13 +280,14 @@ function callProvider(name, messages, req) {
       model,
       messages,
       systemPrompt,
+      reminder,
       {
         'HTTP-Referer': req.headers.get('origin') || 'https://wlybot.vercel.app',
         'X-Title': 'Wlybot',
       }
     );
   }
-  return callGemini(apiKey, model, messages, systemPrompt);
+  return callGemini(apiKey, model, messages, systemPrompt, reminder);
 }
 
 export default async function handler(req) {
