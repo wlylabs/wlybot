@@ -431,7 +431,6 @@
   }
   #input-wrap:focus-within {
     border-color: var(--accent-dim);
-    box-shadow: var(--hairline), 0 0 0 3px var(--accent-soft);
   }
   #input-wrap .prompt {
     color: var(--accent);
