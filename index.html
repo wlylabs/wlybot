@@ -929,17 +929,53 @@
     el.appendChild(row);
   }
 
+  var SUGGESTION_POOL = [
+    [ // coding
+      'Explain REST vs GraphQL in 3 sentences',
+      'Write a regex that validates Indonesian phone numbers',
+      'Debug: why does my useEffect run twice?',
+      'Write a JavaScript function to validate an email'
+    ],
+    [ // creative
+      'Write an Instagram caption for a coffee brand',
+      'Give me 5 name ideas for a tech podcast',
+      'Write a punchy tagline for a portfolio site',
+      'Turn "monday meeting" into a haiku'
+    ],
+    [ // productivity
+      'Summarize this article into 5 bullet points:',
+      'Draft a polite follow-up email to a client',
+      'Plan my week with time blocks',
+      'Turn these notes into a to-do list:'
+    ]
+  ];
+
+  function pickSuggestions() {
+    var picks = [];
+    for (var i = 0; i < SUGGESTION_POOL.length; i++) {
+      var cat = SUGGESTION_POOL[i];
+      picks.push(cat[Math.floor(Math.random() * cat.length)]);
+    }
+    // shuffle so category order also varies
+    for (var j = picks.length - 1; j > 0; j--) {
+      var k = Math.floor(Math.random() * (j + 1));
+      var t = picks[j]; picks[j] = picks[k]; picks[k] = t;
+    }
+    return picks;
+  }
+
   function showEmptyState() {
+    var picks = pickSuggestions();
+    var sugHtml = '';
+    for (var s = 0; s < picks.length; s++) {
+      sugHtml += '<button class="suggestion">' + escapeHtml(picks[s]) + '</button>';
+    }
     chatEl.innerHTML =
       '<div class="empty-state">' +
         '<div class="brand-mark"><span class="wm-seg" data-text="WLYB">WLYB</span><span class="wm-seg o" data-text="0">0</span><span class="wm-seg" data-text="T">T</span></div>' +
         '<h2>An AI assistant <span class="hl">you own</span>.</h2>' +
         '<p>Any model. Every question. Zero friction.</p>' +
-        '<div class="suggestions">' +
-          '<button class="suggestion">Explain how an API works in simple terms</button>' +
-          '<button class="suggestion">Write an Instagram caption for a coffee brand</button>' +
-          '<button class="suggestion">Write a JavaScript function to validate an email</button>' +
-        '</div>' +
+        '<div class="suggestions">' + sugHtml + '</div>' +
         '<div class="empty-feats">' +
           '<span>multi-provider</span>' +
           '<span>streaming</span>' +
@@ -952,6 +988,8 @@
       btns[i].addEventListener('click', function () {
         inputEl.value = this.textContent;
         onInput();
+        // Prompts ending with ":" expect pasted content — fill the input instead of sending.
+        if (/:$/.test(this.textContent)) { inputEl.focus(); return; }
         sendMessage();
       });
     }
@@ -968,9 +1006,22 @@
   }
 
   /* ---------- Send & streaming ---------- */
+  var statusFlashTimer = null;
+  function setStatus(text) {
+    if (statusFlashTimer) { clearTimeout(statusFlashTimer); statusFlashTimer = null; }
+    statusEl.textContent = text;
+  }
+  function flashStatus(text, ms) {
+    setStatus(text);
+    statusFlashTimer = setTimeout(function () {
+      statusFlashTimer = null;
+      statusEl.textContent = busy ? 'streaming_' : 'ready';
+    }, ms);
+  }
+
   function setBusy(v) {
     busy = v;
-    statusEl.textContent = v ? 'streaming_' : 'ready';
+    setStatus(v ? 'thinking_' : 'ready');
     sendBtn.classList.toggle('busy', v);
     sendBtn.setAttribute('aria-label', v ? 'Stop' : 'Send');
     updateSendState();
@@ -1016,6 +1067,7 @@
             return;
           }
           acc += decoder.decode(r.value, { stream: true });
+          if (statusEl.textContent === 'thinking_') setStatus('streaming_');
           botEl.innerHTML = renderMarkdown(acc);
           scrollToBottom();
           return pump();
@@ -1029,12 +1081,17 @@
       botEl.remove();
       addBubble('error', err.message);
       setBusy(false);
+      flashStatus('error_', 3000);
     });
 
     function finish() {
       if (acc.trim() === '') {
         botEl.remove();
         addBubble('error', 'No response from the model. Try again or switch providers in settings.');
+        setBusy(false);
+        flashStatus('error_', 3000);
+        scrollToBottom();
+        return;
       } else {
         convo.push({ role: 'assistant', content: acc });
         current.updated = Date.now();
