@@ -178,6 +178,18 @@
     padding: 12px 2px;
     color: var(--text-dim);
   }
+  /* Fake shell line above the box, like `PS C:\...> claude` */
+  .term-cmd {
+    text-align: left;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .term-cmd .a { opacity: .7; }
+  .term-cmd .c { color: var(--accent); font-weight: 700; }
   .term-box {
     position: relative;
     border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
@@ -230,6 +242,34 @@
     margin-bottom: 6px;
   }
   .term-tips p { font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+  .term-sep { border-top: 1px solid var(--border); margin: 14px 0; }
+  .recent-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+    border: none;
+    background: none;
+    padding: 4px 0;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color .15s;
+  }
+  .recent-item::before { content: "> "; color: var(--accent); }
+  .recent-item .rt {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-dim);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color .15s;
+  }
+  .recent-item .rd { flex-shrink: 0; color: var(--text-dim); opacity: .7; font-size: 11px; letter-spacing: .04em; }
+  .recent-item:active .rt { color: var(--text); }
+  .no-recent { font-size: 12px; color: var(--text-dim); }
   .suggestions { display: flex; flex-direction: column; gap: 2px; text-align: left; }
   .suggestions::before {
     content: "Try one of these";
@@ -742,6 +782,7 @@
   @media (hover: hover) and (pointer: fine) {
     .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--accent-dim); }
     .suggestion:hover { color: var(--text); }
+    .recent-item:hover .rt { color: var(--text); }
     .act:hover { color: var(--accent); }
     .code-copy:hover { color: var(--accent); border-color: var(--accent-dim); }
     .code-run:hover:not(:disabled) { border-color: var(--accent); }
