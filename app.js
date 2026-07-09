@@ -478,25 +478,57 @@
     return picks;
   }
 
+  var PROVIDER_SHORT = {
+    auto: 'auto · groq → gemini → openrouter',
+    groq: 'groq · llama 3.3 70b',
+    gemini: 'google gemini 2.5 flash',
+    openrouter: 'openrouter · llama 3.3 70b'
+  };
+
   function showEmptyState() {
     var picks = pickSuggestions();
     var sugHtml = '';
     for (var s = 0; s < picks.length; s++) {
       sugHtml += '<button class="suggestion">' + escapeHtml(picks[s]) + '</button>';
     }
+    var provLine = PROVIDER_SHORT[getProvider()] || getProvider();
+    var recent = sortedChats().slice(0, 3);
+    var recentHtml = '';
+    if (recent.length === 0) {
+      recentHtml = '<p class="no-recent">No recent activity</p>';
+    } else {
+      for (var r = 0; r < recent.length; r++) {
+        recentHtml += '<button class="recent-item" data-id="' + recent[r].id + '">' +
+          '<span class="rt">' + escapeHtml(recent[r].title || 'Chat') + '</span>' +
+          '<span class="rd">' + fmtDate(recent[r].updated) + '</span>' +
+        '</button>';
+      }
+    }
     chatEl.innerHTML =
       '<div class="empty-state">' +
-        '<div class="brand-mark"><span class="wm-seg" data-text="WLYB">WLYB</span><span class="wm-seg o" data-text="0">0</span><span class="wm-seg" data-text="T">T</span></div>' +
-        '<h2>An AI assistant <span class="hl">you own</span>.</h2>' +
-        '<p>Any model. Every question. Zero friction.</p>' +
-        '<div class="suggestions">' + sugHtml + '</div>' +
-        '<div class="empty-feats">' +
-          '<span>multi-provider</span>' +
-          '<span>streaming</span>' +
-          '<span>voice input</span>' +
-          '<span>no tracking</span>' +
+        '<div class="term-cmd">' + escapeHtml(location.hostname || 'wlybot') + ' <span class="a">&gt;</span> <span class="c">wlybot</span></div>' +
+        '<div class="term-box">' +
+          '<span class="term-box-title">WLYB0T <span class="v">v1.0</span></span>' +
+          '<div class="term-cols">' +
+            '<div class="term-left">' +
+              '<p class="term-welcome">Welcome back!</p>' +
+              '<div class="brand-mark"><span class="wm-seg" data-text="WLYB">WLYB</span><span class="wm-seg o" data-text="0">0</span><span class="wm-seg" data-text="T">T</span></div>' +
+              '<p class="term-meta">' + provLine + '</p>' +
+              '<p class="term-meta">streaming &middot; voice &middot; no tracking</p>' +
+            '</div>' +
+            '<div class="term-tips">' +
+              '<h4>Tips for getting started</h4>' +
+              '<p>Ask anything &mdash; code, drafts, ideas, or explanations. Chats stay on this device.</p>' +
+              '<div class="suggestions">' + sugHtml + '</div>' +
+              '<div class="term-sep"></div>' +
+              '<h4>Recent activity</h4>' +
+              recentHtml +
+            '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
+    var pick0 = picks[0].length > 19 ? picks[0].slice(0, 18) + '…' : picks[0];
+    inputEl.placeholder = 'try "' + pick0 + '"';
     var btns = chatEl.querySelectorAll('.suggestion');
     for (var i = 0; i < btns.length; i++) {
       btns[i].addEventListener('click', function () {
@@ -507,11 +539,16 @@
         sendMessage();
       });
     }
+    var recents = chatEl.querySelectorAll('.recent-item');
+    for (var r2 = 0; r2 < recents.length; r2++) {
+      recents[r2].addEventListener('click', function () { openChat(this.getAttribute('data-id')); });
+    }
   }
 
   function renderAll() {
     chatEl.innerHTML = '';
     if (messages.length === 0) { showEmptyState(); return; }
+    inputEl.placeholder = 'type a message';
     for (var i = 0; i < messages.length; i++) {
       var m = messages[i];
       var el = addBubble(m.role === 'user' ? 'user' : 'bot', m.content);
@@ -622,7 +659,7 @@
     var text = inputEl.value.trim();
     if (!text || busy) return;
 
-    if (messages.length === 0) chatEl.innerHTML = '';
+    if (messages.length === 0) { chatEl.innerHTML = ''; inputEl.placeholder = 'type a message'; }
     removeRegenButtons();
 
     if (chats.indexOf(current) === -1) chats.unshift(current);
