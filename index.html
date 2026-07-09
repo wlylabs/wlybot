@@ -144,14 +144,6 @@
     font-size: 13px;
     max-width: 95%;
   }
-  .msg-meta {
-    align-self: flex-start;
-    font-size: 11px;
-    color: var(--text-dim);
-    margin: -8px 0 0 6px;
-    letter-spacing: .2px;
-  }
-
   /* Markdown inside bot bubbles */
   .msg.bot p { margin: 0 0 10px; }
   .msg.bot p:last-child { margin-bottom: 0; }
@@ -383,8 +375,6 @@
     { id: 'openrouter', name: 'OpenRouter', desc: 'Llama 3.3 70B (free tier)' }
   ];
 
-  var PROVIDER_NAMES = { groq: 'Groq', gemini: 'Gemini', openrouter: 'OpenRouter' };
-
   var messages = [];
   var busy = false;
   var abortCtrl = null;
@@ -491,14 +481,6 @@
     return el;
   }
 
-  function addMeta(text) {
-    var el = document.createElement('div');
-    el.className = 'msg-meta';
-    el.textContent = text;
-    chatEl.appendChild(el);
-    return el;
-  }
-
   function showEmptyState() {
     chatEl.innerHTML =
       '<div class="empty-state">' +
@@ -526,7 +508,6 @@
     if (messages.length === 0) { showEmptyState(); return; }
     for (var i = 0; i < messages.length; i++) {
       addBubble(messages[i].role === 'user' ? 'user' : 'bot', messages[i].content);
-      if (messages[i].meta) addMeta(messages[i].meta);
     }
   }
 
@@ -542,13 +523,6 @@
   function updateSendState() {
     // While busy the button stays enabled so streaming can be stopped.
     sendBtn.disabled = !busy && inputEl.value.trim() === '';
-  }
-
-  function providerMeta(res) {
-    var p = res.headers.get('X-Provider');
-    var m = res.headers.get('X-Model');
-    if (!p) return '';
-    return (PROVIDER_NAMES[p] || p) + (m ? ' · ' + m : '');
   }
 
   function sendMessage() {
@@ -572,7 +546,6 @@
 
     abortCtrl = new AbortController();
     var acc = '';
-    var meta = '';
 
     fetch('/api/chat', {
       method: 'POST',
@@ -587,7 +560,6 @@
           throw new Error('Something went wrong (' + res.status + ')');
         });
       }
-      meta = providerMeta(res);
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
       function pump() {
@@ -617,10 +589,9 @@
         botEl.remove();
         addBubble('error', 'No response from the model. Try again or switch providers in settings.');
       } else {
-        messages.push({ role: 'assistant', content: acc, meta: meta });
+        messages.push({ role: 'assistant', content: acc });
         save();
         botEl.innerHTML = renderMarkdown(acc);
-        if (meta) addMeta(meta);
       }
       setBusy(false);
       scrollToBottom();
