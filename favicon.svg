@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6c7bff"/>
+      <stop offset="1" stop-color="#9d5cf0"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <!-- antenna -->
+  <circle cx="64" cy="29" r="6" fill="#ffffff"/>
+  <line x1="64" y1="36" x2="64" y2="45" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <!-- ears -->
+  <rect x="21" y="60" width="8" height="20" rx="4" fill="#ffffff"/>
+  <rect x="99" y="60" width="8" height="20" rx="4" fill="#ffffff"/>
+  <!-- head -->
+  <rect x="32" y="46" width="64" height="50" rx="16" fill="#ffffff"/>
+  <!-- eyes -->
+  <rect x="46" y="59" width="10" height="18" rx="5" fill="#7367f5"/>
+  <rect x="72" y="59" width="10" height="18" rx="5" fill="#7367f5"/>
+  <!-- smile -->
+  <path d="M53 85 Q64 91 75 85" fill="none" stroke="#7367f5" stroke-width="5" stroke-linecap="round"/>
+</svg>
