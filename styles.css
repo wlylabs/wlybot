@@ -320,7 +320,7 @@
     align-self: stretch;
     color: var(--text);
   }
-  .msg.bot::before { content: "\23FA"; color: var(--accent); font-size: 12px; }
+  .msg.bot::before { content: "\25CF"; color: var(--accent); font-size: 12px; }
   .msg.error {
     align-self: stretch;
     color: var(--danger);
