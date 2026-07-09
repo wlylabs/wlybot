@@ -9,6 +9,6 @@
     <rect x="58" y="78" width="12" height="12"/>
     <rect x="70" y="38" width="12" height="40"/>
   </g>
-  <!-- terracotta cursor block -->
-  <rect x="88" y="72" width="16" height="18" fill="#d97757"/>
+  <!-- cyan cursor block -->
+  <rect x="88" y="72" width="16" height="18" fill="#00e5ff"/>
 </svg>

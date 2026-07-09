@@ -486,15 +486,21 @@
     }
     chatEl.innerHTML =
       '<div class="empty-state">' +
-        '<div class="brand-mark"><span class="wm-seg" data-text="WLYB">WLYB</span><span class="wm-seg o" data-text="0">0</span><span class="wm-seg" data-text="T">T</span></div>' +
-        '<h2>An AI assistant <span class="hl">you own</span>.</h2>' +
-        '<p>Any model. Every question. Zero friction.</p>' +
-        '<div class="suggestions">' + sugHtml + '</div>' +
-        '<div class="empty-feats">' +
-          '<span>multi-provider</span>' +
-          '<span>streaming</span>' +
-          '<span>voice input</span>' +
-          '<span>no tracking</span>' +
+        '<div class="term-box">' +
+          '<span class="term-box-title">WLYB0T <span class="v">v1.0</span></span>' +
+          '<div class="term-cols">' +
+            '<div class="term-left">' +
+              '<p class="term-welcome">Welcome back!</p>' +
+              '<div class="brand-mark"><span class="wm-seg" data-text="WLYB">WLYB</span><span class="wm-seg o" data-text="0">0</span><span class="wm-seg" data-text="T">T</span></div>' +
+              '<p class="term-meta">multi-provider &middot; streaming</p>' +
+              '<p class="term-meta">voice input &middot; no tracking</p>' +
+            '</div>' +
+            '<div class="term-tips">' +
+              '<h4>Tips for getting started</h4>' +
+              '<p>Ask anything &mdash; code, drafts, ideas, or explanations. Chats stay on this device.</p>' +
+              '<div class="suggestions">' + sugHtml + '</div>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
     var btns = chatEl.querySelectorAll('.suggestion');
