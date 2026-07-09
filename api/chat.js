@@ -387,6 +387,29 @@ async function consumeGeminiStream(body, onText) {
   return { text, calls };
 }
 
+// Providers sometimes accept the request (HTTP 200) and then stream an
+// empty completion — a safety block, a bad tool-call round, or plain model
+// flakiness. Read the stream until the first non-whitespace output so the
+// handler can fall back to the next provider instead of committing to a
+// stream that ends with nothing. Returns the chunks consumed so far so the
+// caller can replay them before piping the rest.
+async function waitForContent(stream) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let hasContent = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    if (decoder.decode(value, { stream: true }).trim()) {
+      hasContent = true;
+      break;
+    }
+  }
+  return { reader, chunks, hasContent };
+}
+
 async function describeFailure(res) {
   let detail = '';
   try {
@@ -432,12 +455,14 @@ async function openAiAgentResponse(url, apiKey, model, messages, systemPrompt, r
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let sent = false;
       try {
         let upstream = first;
         for (let round = 0; ; round++) {
-          const { text, toolCalls } = await consumeOpenAiStream(upstream.body, (t) =>
-            controller.enqueue(encoder.encode(t))
-          );
+          const { text, toolCalls } = await consumeOpenAiStream(upstream.body, (t) => {
+            sent = true;
+            controller.enqueue(encoder.encode(t));
+          });
           if (toolCalls.length === 0) break;
           convo.push({ role: 'assistant', content: text || null, tool_calls: toolCalls });
           for (let i = 0; i < toolCalls.length; i++) {
@@ -457,10 +482,11 @@ async function openAiAgentResponse(url, apiKey, model, messages, systemPrompt, r
           if (!upstream.ok) throw new Error(`provider returned ${await describeFailure(upstream)}`);
         }
       } catch (err) {
-        // Text may already be flowing, so surface a generic notice in-stream
-        // and keep the real details in the server log.
+        // If text is already flowing, surface a generic notice in-stream;
+        // if nothing was sent yet, close empty so the handler can fall back
+        // to the next provider. Real details go to the server log.
         console.error('openai-stream error:', err);
-        controller.enqueue(encoder.encode('\n\n[error: the response was interrupted, please try again]'));
+        if (sent) controller.enqueue(encoder.encode('\n\n[error: the response was interrupted, please try again]'));
       }
       controller.close();
     },
@@ -500,12 +526,14 @@ async function geminiAgentResponse(apiKey, model, messages, systemPrompt, remind
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let sent = false;
       try {
         let upstream = first;
         for (let round = 0; ; round++) {
-          const { text, calls } = await consumeGeminiStream(upstream.body, (t) =>
-            controller.enqueue(encoder.encode(t))
-          );
+          const { text, calls } = await consumeGeminiStream(upstream.body, (t) => {
+            sent = true;
+            controller.enqueue(encoder.encode(t));
+          });
           if (calls.length === 0) break;
           contents.push({
             role: 'model',
@@ -527,7 +555,7 @@ async function geminiAgentResponse(apiKey, model, messages, systemPrompt, remind
         }
       } catch (err) {
         console.error('gemini-stream error:', err);
-        controller.enqueue(encoder.encode('\n\n[error: the response was interrupted, please try again]'));
+        if (sent) controller.enqueue(encoder.encode('\n\n[error: the response was interrupted, please try again]'));
       }
       controller.close();
     },
@@ -647,7 +675,38 @@ export default async function handler(req) {
       continue;
     }
 
-    return new Response(result.stream, {
+    // A 200 upstream can still stream an empty completion; only commit to
+    // this provider once it produces real output, otherwise fall through.
+    let first;
+    try {
+      first = await waitForContent(result.stream);
+    } catch (err) {
+      failures.push(`${provider}: ${err.message}`);
+      continue;
+    }
+    if (!first.hasContent) {
+      failures.push(`${provider}: empty completion`);
+      continue;
+    }
+
+    const { reader, chunks } = first;
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for (const chunk of chunks) controller.enqueue(chunk);
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } catch (err) {
+          console.error('relay-stream error:', err);
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
@@ -660,8 +719,9 @@ export default async function handler(req) {
   // Upstream error bodies can reveal internal details (key state, quota
   // info, provider internals), so they go to the server log only.
   console.error('All providers failed:', failures.join(' | '));
-  return jsonResponse(
-    { error: 'All providers are currently unavailable. Please try again in a moment.' },
-    502
-  );
+  const error =
+    candidates.length === 1
+      ? `The ${candidates[0]} provider returned no response. Try again or switch providers in settings.`
+      : 'All providers are currently unavailable. Please try again in a moment.';
+  return jsonResponse({ error }, 502);
 }
