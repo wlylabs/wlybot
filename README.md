@@ -12,6 +12,7 @@
 ## Fitur
 
 - **Multi-provider dengan fallback otomatis** — Groq sebagai provider utama; jika gagal (rate limit, gangguan, key invalid), server berpindah sendiri ke Gemini, lalu OpenRouter, dalam satu request.
+- **Web search (opsional)** — set `TAVILY_API_KEY` dan bot bisa mencari di web lewat tool calling: model memanggil tool `web_search` untuk berita, harga, cuaca, atau fakta terkini, lalu menjawab berdasarkan hasilnya lengkap dengan link sumber. Tanpa key ini bot berperilaku seperti biasa (mengaku tidak bisa memverifikasi info terkini).
 - **Streaming** — respons mengalir kata per kata, bisa dihentikan kapan saja.
 - **Multi-percakapan** — banyak chat sekaligus dengan judul otomatis; buat, buka kembali, dan hapus percakapan dari sheet riwayat. Semua tersimpan di perangkat (localStorage), bukan di server.
 - **Regenerate & copy** — ulangi jawaban terakhir dengan satu ketukan, salin seluruh jawaban atau blok kode saja.
@@ -39,7 +40,7 @@ Stream teks polos kembali ke browser
 | File | Peran |
 |---|---|
 | `index.html` | UI chat statis: render markdown ringan, streaming, multi-percakapan, voice input, ekspor, pengaturan provider |
-| `api/chat.js` | Edge Function: validasi, fallback provider, normalisasi SSE menjadi stream teks |
+| `api/chat.js` | Edge Function: validasi, fallback provider, agent loop (tool calling + web search), normalisasi SSE menjadi stream teks |
 | `favicon.svg` + `icon-*.png` | Logo dan ikon aplikasi |
 | `site.webmanifest` | Metadata PWA |
 | `vercel.json` | Security headers |
@@ -54,6 +55,7 @@ Stream teks polos kembali ke browser
    | `GROQ_API_KEY` | Provider utama | [console.groq.com/keys](https://console.groq.com/keys) |
    | `GEMINI_API_KEY` | Fallback pertama | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
    | `OPENROUTER_API_KEY` | Fallback kedua | [openrouter.ai/keys](https://openrouter.ai/keys) |
+   | `TAVILY_API_KEY` | Web search (opsional) | [app.tavily.com](https://app.tavily.com) — ada free tier |
 
 3. Redeploy setelah menambah atau mengubah environment variable — Vercel tidak menerapkannya ke deployment yang sudah berjalan.
 
