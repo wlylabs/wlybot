@@ -34,6 +34,10 @@
 
   <main id="chat" aria-live="polite"></main>
 
+  <button id="jump" aria-label="Scroll to bottom">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+  </button>
+
   <div id="composer">
     <div id="input-wrap">
       <span class="prompt">$</span>
@@ -59,7 +63,7 @@
 
 <div id="sheet-backdrop"></div>
 
-<div id="chats-sheet" class="sheet" role="dialog" aria-label="Conversations">
+<div id="chats-sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Conversations" tabindex="-1">
   <div class="sheet-handle"></div>
   <h3>Conversations</h3>
   <p class="hint">Chats are stored on this device only.</p>
@@ -67,13 +71,23 @@
   <div id="chats-list"></div>
 </div>
 
-<div id="sheet" class="sheet" role="dialog" aria-label="Settings">
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1">
   <div class="sheet-handle"></div>
   <h3>AI Model</h3>
   <p class="hint">API keys are configured on the server (Vercel environment variables), never on this device. Auto mode uses Groq first and falls back to Gemini, then OpenRouter, if it fails.</p>
   <div id="provider-list"></div>
   <button class="sheet-btn" id="export-btn">Export this chat (.md)</button>
   <button class="sheet-danger" id="clear-btn">Delete this chat</button>
+</div>
+
+<div id="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-text">
+  <div class="modal-box">
+    <p id="confirm-text"></p>
+    <div class="modal-actions">
+      <button id="confirm-cancel" class="modal-btn">Cancel</button>
+      <button id="confirm-ok" class="modal-btn danger">Delete</button>
+    </div>
+  </div>
 </div>
 
 <script src="/app.js" defer></script>

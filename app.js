@@ -104,26 +104,44 @@
 
   function deleteChat(id) {
     if (busy) return;
-    if (!confirm('Delete this conversation?')) return;
-    for (var i = 0; i < chats.length; i++) {
-      if (chats[i].id === id) { chats.splice(i, 1); break; }
-    }
-    if (current.id === id) {
-      current = { id: uid(), title: '', messages: [], updated: Date.now() };
-      messages = current.messages;
-      renderAll();
-    }
-    persist();
-    renderChats();
+    showConfirm('Delete this conversation?', 'Delete', function () {
+      for (var i = 0; i < chats.length; i++) {
+        if (chats[i].id === id) { chats.splice(i, 1); break; }
+      }
+      if (current.id === id) {
+        current = { id: uid(), title: '', messages: [], updated: Date.now() };
+        messages = current.messages;
+        renderAll();
+      }
+      persist();
+      renderChats();
+    });
   }
 
   function getProvider() {
     return localStorage.getItem(STORAGE_PROVIDER) || 'auto';
   }
 
-  function scrollToBottom() {
-    chatEl.scrollTop = chatEl.scrollHeight;
+  /* Follow the stream only while the user is at the bottom; never yank
+     them back down after they scroll up to read. */
+  var autoScroll = true;
+  var jumpBtn = document.getElementById('jump');
+
+  chatEl.addEventListener('scroll', function () {
+    var dist = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight;
+    autoScroll = dist < 60;
+    jumpBtn.classList.toggle('show', dist > 160);
+  });
+
+  function scrollToBottom(force) {
+    if (force) autoScroll = true;
+    if (autoScroll) chatEl.scrollTop = chatEl.scrollHeight;
   }
+
+  jumpBtn.addEventListener('click', function () {
+    autoScroll = true;
+    chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: 'smooth' });
+  });
 
   /* ---------- Lightweight markdown ---------- */
   function escapeHtml(s) {
@@ -161,8 +179,9 @@
   function renderBlocks(text) {
     var lines = text.split('\n');
     var html = '';
-    var listType = null; // 'ul' | 'ol'
     var para = [];
+    var stack = [];  // open list types, outermost first
+    var liOpen = []; // whether an <li> is still open at each depth
 
     function flushPara() {
       if (para.length) {
@@ -170,37 +189,87 @@
         para = [];
       }
     }
+    function closeItem() {
+      if (liOpen.length && liOpen[liOpen.length - 1]) {
+        html += '</li>';
+        liOpen[liOpen.length - 1] = false;
+      }
+    }
     function closeList() {
-      if (listType) { html += '</' + listType + '>'; listType = null; }
+      closeItem();
+      html += '</' + stack.pop() + '>';
+      liOpen.pop();
+    }
+    function closeAllLists() {
+      while (stack.length) closeList();
+    }
+
+    function isTableRow(s) { return /^\s*\|.*\|\s*$/.test(s); }
+    function isTableSep(s) { return /^\s*\|?[\s:|-]+\|?\s*$/.test(s) && s.indexOf('-') !== -1; }
+    function splitRow(s) {
+      var cells = s.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
+      for (var c = 0; c < cells.length; c++) cells[c] = cells[c].trim();
+      return cells;
     }
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
+
+      if (isTableRow(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        flushPara(); closeAllLists();
+        var head = splitRow(line);
+        html += '<div class="tablewrap"><table><thead><tr>';
+        for (var hc = 0; hc < head.length; hc++) html += '<th>' + renderInline(head[hc]) + '</th>';
+        html += '</tr></thead><tbody>';
+        i += 2;
+        while (i < lines.length && isTableRow(lines[i])) {
+          var cells = splitRow(lines[i]);
+          html += '<tr>';
+          for (var cc = 0; cc < head.length; cc++) html += '<td>' + renderInline(cells[cc] || '') + '</td>';
+          html += '</tr>';
+          i++;
+        }
+        i--; // the for-loop increment moves past the last table row
+        html += '</tbody></table></div>';
+        continue;
+      }
+
       var h = line.match(/^(#{1,3})\s+(.*)/);
-      var ul = line.match(/^\s*[-*]\s+(.*)/);
-      var ol = line.match(/^\s*\d+[.)]\s+(.*)/);
-      var bq = line.match(/^>\s?(.*)/);
+      var li = line.match(/^(\s*)([-*]|\d+[.)])\s+(.*)/);
+      // The source is HTML-escaped before parsing, so ">" arrives as "&gt;".
+      var bq = line.match(/^&gt;\s?(.*)/);
 
       if (h) {
-        flushPara(); closeList();
+        flushPara(); closeAllLists();
         var lvl = h[1].length;
         html += '<h' + lvl + '>' + renderInline(h[2]) + '</h' + lvl + '>';
-      } else if (ul || ol) {
+      } else if (li) {
         flushPara();
-        var want = ul ? 'ul' : 'ol';
-        if (listType !== want) { closeList(); html += '<' + want + '>'; listType = want; }
-        html += '<li>' + renderInline((ul || ol)[1]) + '</li>';
+        var want = /^\d/.test(li[2]) ? 'ol' : 'ul';
+        // Two spaces of indent per level; never jump deeper than one new level.
+        var depth = Math.min(Math.floor(li[1].length / 2), stack.length, 3);
+        while (stack.length > depth + 1) closeList();
+        if (stack.length === depth + 1 && stack[depth] !== want) closeList();
+        if (stack.length < depth + 1) {
+          // A nested list opens inside the still-open parent <li>.
+          html += '<' + want + '>';
+          stack.push(want);
+          liOpen.push(false);
+        }
+        closeItem();
+        html += '<li>' + renderInline(li[3]);
+        liOpen[liOpen.length - 1] = true;
       } else if (bq) {
-        flushPara(); closeList();
+        flushPara(); closeAllLists();
         html += '<blockquote>' + renderInline(bq[1]) + '</blockquote>';
       } else if (line.trim() === '') {
-        flushPara(); closeList();
+        flushPara(); closeAllLists();
       } else {
-        closeList();
+        closeAllLists();
         para.push(line);
       }
     }
-    flushPara(); closeList();
+    flushPara(); closeAllLists();
     return html;
   }
 
@@ -240,7 +309,7 @@
     if (role === 'bot') el.innerHTML = renderMarkdown(content);
     else el.textContent = content;
     chatEl.appendChild(el);
-    scrollToBottom();
+    scrollToBottom(true);
     return el;
   }
 
@@ -398,7 +467,7 @@
     botEl.className = 'msg bot';
     botEl.innerHTML = '<span class="cursor-blink"></span>';
     chatEl.appendChild(botEl);
-    scrollToBottom();
+    scrollToBottom(true);
 
     abortCtrl = new AbortController();
     var acc = '';
@@ -554,7 +623,8 @@
   /* ---------- Export ---------- */
   function exportChat() {
     if (!messages.length) {
-      alert('Nothing to export yet.');
+      closeSheets();
+      flashStatus('nothing to export_', 2000);
       return;
     }
     var lines = ['# Wlybot chat', ''];
@@ -570,6 +640,39 @@
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
+
+  /* ---------- Confirm modal ---------- */
+  var confirmModal = document.getElementById('confirm-modal');
+  var confirmBox = confirmModal.querySelector('.modal-box');
+  var confirmTextEl = document.getElementById('confirm-text');
+  var confirmOkBtn = document.getElementById('confirm-ok');
+  var confirmCancelBtn = document.getElementById('confirm-cancel');
+  var confirmCb = null;
+  var confirmLastFocus = null;
+
+  function showConfirm(msg, okLabel, cb) {
+    confirmTextEl.textContent = msg;
+    confirmOkBtn.textContent = okLabel;
+    confirmCb = cb;
+    confirmLastFocus = document.activeElement;
+    document.body.classList.add('confirm-open');
+    confirmCancelBtn.focus();
+  }
+  function closeConfirm(accepted) {
+    document.body.classList.remove('confirm-open');
+    var cb = confirmCb;
+    confirmCb = null;
+    if (confirmLastFocus) {
+      try { confirmLastFocus.focus(); } catch (e) {}
+      confirmLastFocus = null;
+    }
+    if (accepted && cb) cb();
+  }
+  confirmOkBtn.addEventListener('click', function () { closeConfirm(true); });
+  confirmCancelBtn.addEventListener('click', function () { closeConfirm(false); });
+  confirmModal.addEventListener('click', function (e) {
+    if (e.target === confirmModal) closeConfirm(false);
+  });
 
   /* ---------- Bottom sheets ---------- */
   function renderProviders() {
@@ -634,12 +737,92 @@
     });
   }
 
-  function openSettings() { closeSheets(); renderProviders(); document.body.classList.add('sheet-open'); }
-  function openChats() { closeSheets(); renderChats(); document.body.classList.add('chats-open'); }
+  var settingsSheet = document.getElementById('sheet');
+  var chatsSheet = document.getElementById('chats-sheet');
+  var sheetLastFocus = null;
+
+  function openSheet(sheetEl, cls) {
+    closeSheets();
+    sheetLastFocus = document.activeElement;
+    document.body.classList.add(cls);
+    sheetEl.focus();
+  }
+  function openSettings() { renderProviders(); openSheet(settingsSheet, 'sheet-open'); }
+  function openChats() { renderChats(); openSheet(chatsSheet, 'chats-open'); }
   function closeSheets() {
+    var wasOpen = document.body.classList.contains('sheet-open') ||
+      document.body.classList.contains('chats-open');
     document.body.classList.remove('sheet-open');
     document.body.classList.remove('chats-open');
+    if (wasOpen && sheetLastFocus) {
+      try { sheetLastFocus.focus(); } catch (e) {}
+      sheetLastFocus = null;
+    }
   }
+
+  function activeOverlay() {
+    if (document.body.classList.contains('confirm-open')) return confirmBox;
+    if (document.body.classList.contains('sheet-open')) return settingsSheet;
+    if (document.body.classList.contains('chats-open')) return chatsSheet;
+    return null;
+  }
+
+  function trapFocus(container, e) {
+    var items = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!items.length) { e.preventDefault(); return; }
+    var first = items[0];
+    var last = items[items.length - 1];
+    var active = document.activeElement;
+    if (!container.contains(active)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && (active === first || active === container)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (document.body.classList.contains('confirm-open')) { closeConfirm(false); return; }
+      closeSheets();
+      return;
+    }
+    if (e.key === 'Tab') {
+      var overlay = activeOverlay();
+      if (overlay) trapFocus(overlay, e);
+    }
+  });
+
+  // Swipe down on a sheet to dismiss it, matching the drag handle's affordance.
+  function makeSwipeable(sheetEl) {
+    var startY = 0, delta = 0, dragging = false;
+    var scroller = sheetEl.querySelector('#chats-list');
+    sheetEl.addEventListener('touchstart', function (e) {
+      dragging = true;
+      startY = e.touches[0].clientY;
+      delta = 0;
+    }, { passive: true });
+    sheetEl.addEventListener('touchmove', function (e) {
+      if (!dragging) return;
+      if (scroller && scroller.contains(e.target) && scroller.scrollTop > 0) {
+        dragging = false;
+        sheetEl.style.transition = '';
+        sheetEl.style.transform = '';
+        return;
+      }
+      delta = e.touches[0].clientY - startY;
+      if (delta > 0) {
+        sheetEl.style.transition = 'none';
+        sheetEl.style.transform = 'translateY(' + delta + 'px)';
+      }
+    }, { passive: true });
+    sheetEl.addEventListener('touchend', function () {
+      if (!dragging) return;
+      dragging = false;
+      sheetEl.style.transition = '';
+      sheetEl.style.transform = '';
+      if (delta > 70) closeSheets();
+    });
+  }
+  makeSwipeable(settingsSheet);
+  makeSwipeable(chatsSheet);
   document.getElementById('settings-btn').addEventListener('click', openSettings);
   document.getElementById('history-btn').addEventListener('click', openChats);
   document.getElementById('new-btn').addEventListener('click', newChat);
@@ -648,12 +831,13 @@
   backdropEl.addEventListener('click', closeSheets);
 
   document.getElementById('clear-btn').addEventListener('click', function () {
-    if (!confirm('Delete this chat?')) return;
-    messages.splice(0, messages.length);
-    current.title = '';
-    persist();
-    closeSheets();
-    renderAll();
+    showConfirm('Delete this chat?', 'Delete', function () {
+      messages.splice(0, messages.length);
+      current.title = '';
+      persist();
+      closeSheets();
+      renderAll();
+    });
   });
 
   /* ---------- Init ---------- */

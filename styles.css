@@ -35,6 +35,9 @@
     -webkit-text-size-adjust: 100%;
   }
   ::selection { background: var(--accent); color: #000; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #input:focus-visible { outline: none; } /* the wrapper shows focus via :focus-within */
+  .sheet { outline: none; }
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
@@ -47,6 +50,10 @@
     height: 100dvh;
     max-width: 760px;
     margin: 0 auto;
+    position: relative;
+  }
+  @media (min-width: 761px) {
+    #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   }
 
   /* Header */
@@ -128,8 +135,27 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    scroll-behavior: smooth;
   }
+  #jump {
+    position: absolute;
+    right: 14px;
+    bottom: calc(82px + var(--sab));
+    width: 36px; height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    z-index: 5;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity .15s, transform .15s, color .15s, border-color .15s;
+  }
+  #jump.show { opacity: 1; pointer-events: auto; transform: none; }
+  #jump svg { width: 16px; height: 16px; }
   .empty-state {
     margin: auto;
     text-align: center;
@@ -233,6 +259,7 @@
   .msg.bot p { margin: 0 0 10px; }
   .msg.bot p:last-child { margin-bottom: 0; }
   .msg.bot ul, .msg.bot ol { margin: 0 0 10px 20px; }
+  .msg.bot li ul, .msg.bot li ol { margin: 4px 0 0 18px; }
   .msg.bot li { margin-bottom: 4px; }
   .msg.bot li::marker { color: var(--accent); }
   .msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 14px; margin: 12px 0 6px; letter-spacing: .02em; }
@@ -285,6 +312,21 @@
     padding-left: 12px;
     color: var(--text-dim);
     margin: 0 0 10px;
+  }
+  .msg.bot .tablewrap { overflow-x: auto; margin: 0 0 10px; -webkit-overflow-scrolling: touch; }
+  .msg.bot table { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+  .msg.bot th, .msg.bot td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .msg.bot th {
+    background: var(--surface-2);
+    color: var(--accent);
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
   }
   .code-copy {
     background: transparent;
@@ -560,3 +602,64 @@
   }
   .chat-del:active { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
   .chats-empty { color: var(--text-dim); font-size: 12px; text-align: center; padding: 10px 0 4px; }
+
+  /* Confirm modal (replaces native confirm/alert) */
+  #confirm-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, .65);
+  }
+  body.confirm-open #confirm-modal { display: flex; }
+  .modal-box {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    animation: pop .18s ease-out;
+  }
+  .modal-box p { font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+  .modal-box p::before { content: "// "; color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-btn {
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .modal-btn:active { color: var(--accent); border-color: var(--accent-dim); }
+  .modal-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+  .modal-btn.danger:active { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+  /* Pointer feedback for devices with a real cursor */
+  @media (hover: hover) and (pointer: fine) {
+    .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--accent-dim); }
+    .suggestion:hover { background: var(--surface-2); border-color: var(--accent-dim); }
+    .act:hover { color: var(--accent); }
+    .code-copy:hover { color: var(--accent); border-color: var(--accent-dim); }
+    #mic:hover { color: var(--text); }
+    #send:hover:not(:disabled):not(.busy) { background: var(--accent-press); }
+    #send.busy:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+    #jump:hover { color: var(--accent); border-color: var(--accent-dim); }
+    .provider-option:hover, .chat-item:hover { border-color: var(--accent-dim); }
+    .sheet-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+    .sheet-danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .sheet-new:hover { background: var(--accent-press); }
+    .chat-del:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+    .modal-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+    .modal-btn.danger:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  }
